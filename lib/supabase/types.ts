@@ -1,0 +1,170 @@
+export type LeadStatus = "checking" | "meeting" | "booked" | "played" | "lost";
+export type DjTier = "Headliner" | "Resident" | "Associate";
+export type ProdTier = "Marquee" | "Modern" | "Essential";
+export type LeadSource = "honeybook" | "manual";
+export type AvailabilityAnswer = "available" | "pass";
+export type UserRole = "owner" | "dj";
+
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: {
+          id: string;
+          email: string;
+          display_name: string | null;
+          role: UserRole;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          email: string;
+          display_name?: string | null;
+          role?: UserRole;
+        };
+        Update: {
+          display_name?: string | null;
+          role?: UserRole;
+        };
+      };
+      dj_profiles: {
+        Row: {
+          user_id: string;
+          dj_tier_visibility: DjTier[];
+          notify_email: boolean;
+          notify_sms: boolean;
+          phone: string | null;
+        };
+        Insert: {
+          user_id: string;
+          dj_tier_visibility?: DjTier[];
+          notify_email?: boolean;
+          notify_sms?: boolean;
+          phone?: string | null;
+        };
+        Update: {
+          dj_tier_visibility?: DjTier[];
+          notify_email?: boolean;
+          notify_sms?: boolean;
+          phone?: string | null;
+        };
+      };
+      leads: {
+        Row: {
+          id: string;
+          client_name: string | null;
+          contact: string | null;
+          event_date: string | null;
+          location: string | null;
+          dj_tier: DjTier | null;
+          prod_tier: ProdTier | null;
+          upgrades: string | null;
+          client_vision: string | null;
+          source: LeadSource;
+          owner_notes: string | null;
+          dj_notes: string | null;
+          payout: number | null;
+          status: LeadStatus;
+          assigned_dj_id: string | null;
+          honeybook_ref: string | null;
+          needs_review: boolean;
+          created_at: string;
+        };
+        Insert: {
+          client_name?: string | null;
+          contact?: string | null;
+          event_date?: string | null;
+          location?: string | null;
+          dj_tier?: DjTier | null;
+          prod_tier?: ProdTier | null;
+          upgrades?: string | null;
+          client_vision?: string | null;
+          source?: LeadSource;
+          owner_notes?: string | null;
+          dj_notes?: string | null;
+          payout?: number | null;
+          status?: LeadStatus;
+          assigned_dj_id?: string | null;
+          honeybook_ref?: string | null;
+          needs_review?: boolean;
+        };
+        Update: {
+          client_name?: string | null;
+          contact?: string | null;
+          event_date?: string | null;
+          location?: string | null;
+          dj_tier?: DjTier | null;
+          prod_tier?: ProdTier | null;
+          upgrades?: string | null;
+          client_vision?: string | null;
+          owner_notes?: string | null;
+          dj_notes?: string | null;
+          payout?: number | null;
+          status?: LeadStatus;
+          assigned_dj_id?: string | null;
+          needs_review?: boolean;
+        };
+      };
+      availability_responses: {
+        Row: {
+          id: string;
+          lead_id: string;
+          dj_user_id: string;
+          response: AvailabilityAnswer;
+          responded_at: string;
+        };
+        Insert: {
+          lead_id: string;
+          dj_user_id: string;
+          response: AvailabilityAnswer;
+        };
+        Update: {
+          response?: AvailabilityAnswer;
+        };
+      };
+      events: {
+        Row: {
+          id: string;
+          lead_id: string | null;
+          actor_user_id: string | null;
+          event_type: string;
+          detail: Record<string, unknown> | null;
+          created_at: string;
+        };
+        Insert: {
+          lead_id?: string | null;
+          actor_user_id?: string | null;
+          event_type: string;
+          detail?: Record<string, unknown> | null;
+        };
+        Update: Record<string, never>;
+      };
+    };
+    Views: {
+      leads_feed: {
+        Row: {
+          id: string;
+          client_name: string | null;
+          contact: string | null;
+          event_date: string | null;
+          location: string | null;
+          dj_tier: DjTier | null;
+          prod_tier: ProdTier | null;
+          upgrades: string | null;
+          client_vision: string | null;
+          owner_notes: string | null;
+          dj_notes: string | null;
+          payout: number | null;
+          status: LeadStatus;
+          assigned_dj_id: string | null;
+          source: LeadSource;
+          honeybook_ref: string | null;
+          needs_review: boolean;
+          created_at: string;
+          has_available: boolean;
+        };
+      };
+    };
+    Functions: Record<string, never>;
+  };
+}
