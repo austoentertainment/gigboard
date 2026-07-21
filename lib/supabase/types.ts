@@ -26,6 +26,7 @@ export interface Database {
           display_name?: string | null;
           role?: UserRole;
         };
+        Relationships: [];
       };
       dj_profiles: {
         Row: {
@@ -48,6 +49,7 @@ export interface Database {
           notify_sms?: boolean;
           phone?: string | null;
         };
+        Relationships: [];
       };
       leads: {
         Row: {
@@ -104,6 +106,7 @@ export interface Database {
           assigned_dj_id?: string | null;
           needs_review?: boolean;
         };
+        Relationships: [];
       };
       availability_responses: {
         Row: {
@@ -121,6 +124,7 @@ export interface Database {
         Update: {
           response?: AvailabilityAnswer;
         };
+        Relationships: [];
       };
       events: {
         Row: {
@@ -138,6 +142,7 @@ export interface Database {
           detail?: Record<string, unknown> | null;
         };
         Update: Record<string, never>;
+        Relationships: [];
       };
     };
     Views: {
@@ -163,6 +168,7 @@ export interface Database {
           created_at: string;
           has_available: boolean;
         };
+        Relationships: [];
       };
     };
     Functions: Record<string, never>;
