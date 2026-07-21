@@ -17,6 +17,7 @@ const T = {
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const sendLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +28,12 @@ export default function LoginPage() {
       email: email.trim(),
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
-    setStatus(error ? "error" : "sent");
+    if (error) {
+      setErrorMessage(error.message);
+      setStatus("error");
+    } else {
+      setStatus("sent");
+    }
   };
 
   return (
@@ -96,7 +102,7 @@ export default function LoginPage() {
                 {status === "sending" ? "SENDING…" : "SEND SIGN-IN LINK"}
               </button>
               {status === "error" && (
-                <div style={{ fontSize: 12.5, color: "#F0616D" }}>Couldn&apos;t send that — check the email and try again.</div>
+                <div style={{ fontSize: 12.5, color: "#F0616D" }}>{errorMessage || "Couldn't send that — check the email and try again."}</div>
               )}
             </form>
           )}
