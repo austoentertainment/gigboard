@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, DjTier, ProdTier } from "@/lib/supabase/types";
 import {
@@ -46,7 +46,7 @@ function AvailChips({ lead, roster, availability }: { lead: LeadRow; roster: Ros
 }
 
 function LeadCard({
-  lead, djView, roster, availability, myAnswer,
+  lead, djView, roster, availability, myAnswer, highlighted,
   onSetAvail, onUpdateLead, onDeleteLead,
 }: {
   lead: LeadRow;
@@ -54,6 +54,7 @@ function LeadCard({
   roster: RosterUser[];
   availability: AvailabilityRow[];
   myAnswer?: "available" | "pass";
+  highlighted?: boolean;
   onSetAvail: (leadId: string, answer: "available" | "pass") => void;
   onUpdateLead: (id: string, patch: LeadUpdate, msg?: string) => void;
   onDeleteLead: (id: string) => void;
@@ -65,7 +66,15 @@ function LeadCard({
   const tier = tierStr(lead);
 
   return (
-    <div style={{ display: "flex", background: T.surface, border: `1px solid ${st === "ready" && !djView ? T.green + "66" : T.line}`, borderRadius: 10, overflow: "hidden" }}>
+    <div
+      id={`lead-${lead.id}`}
+      style={{
+        display: "flex", background: T.surface,
+        border: `1px solid ${highlighted ? T.amber : st === "ready" && !djView ? T.green + "66" : T.line}`,
+        boxShadow: highlighted ? `0 0 0 3px ${T.amber}33` : "none",
+        borderRadius: 10, overflow: "hidden",
+      }}
+    >
       <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "14px 8px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
         <div style={{ fontSize: 26, fontWeight: 900, lineHeight: 1, fontFamily: "'Archivo', system-ui, sans-serif" }}>{d.day}</div>
@@ -85,7 +94,10 @@ function LeadCard({
                 : [tier, lead.location].filter(Boolean).join(" · ") || "tier TBD"}
             </div>
           </div>
-          <Tag color={s.color}>{s.label}</Tag>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
+            <Tag color={s.color}>{s.label}</Tag>
+          </div>
         </div>
 
         {!djView && (
@@ -117,6 +129,11 @@ function LeadCard({
         {!djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} availability={availability} />}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2, alignItems: "center" }}>
+          {!djView && lead.needs_review && (
+            <Btn kind="green" small onClick={() => onUpdateLead(lead.id, { needs_review: false }, "Reviewed — live on the board")}>
+              ✓ APPROVE
+            </Btn>
+          )}
           {djView && ["checking", "ready"].includes(st) && (
             <>
               <Btn kind={myAnswer === "available" ? "green" : "primary"} small onClick={() => onSetAvail(lead.id, "available")}>
@@ -339,6 +356,8 @@ export default function BoardApp({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightLeadId = searchParams.get("lead");
 
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadRow[]>([]);
@@ -380,6 +399,11 @@ export default function BoardApp({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [loadData]);
 
+  useEffect(() => {
+    if (!highlightLeadId || leads.length === 0) return;
+    document.getElementById(`lead-${highlightLeadId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightLeadId, leads]);
+
   const logout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
@@ -399,6 +423,13 @@ export default function BoardApp({
     if (error) { ping("Couldn't save — check connection and retry"); return; }
     ping(answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date");
     loadData();
+    if (answer === "available") {
+      fetch("/api/notify/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId }),
+      }).catch(() => {});
+    }
   };
 
   const updateLead = async (id: string, patch: LeadUpdate, msg?: string) => {
@@ -417,11 +448,16 @@ export default function BoardApp({
   };
 
   const addLead = async (fields: LeadInsert) => {
-    const { error } = await supabase.from("leads").insert(fields);
+    const { data, error } = await supabase.from("leads").insert(fields).select("id").single();
     if (error) { ping("Couldn't save — check connection and retry"); return; }
     ping("Lead is on the board — date check is live");
     setShowAdd(false);
     loadData();
+    fetch("/api/notify/new-lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leadId: data.id }),
+    }).catch(() => {});
   };
 
   if (loading) {
@@ -524,13 +560,13 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "ready").sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.amber, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "checking").sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
             ))}
           </>
         )}
@@ -539,7 +575,7 @@ export default function BoardApp({
           <>
             {inMotion.length === 0 && <Empty text="Nothing in motion. When a date check comes back green, book the meeting and it moves here." />}
             {inMotion.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
             ))}
           </>
         )}
@@ -548,7 +584,7 @@ export default function BoardApp({
           <>
             {archived.length === 0 && <Empty text="Played and lost leads end up here." />}
             {archived.map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
             ))}
           </>
         )}
@@ -589,7 +625,7 @@ export default function BoardApp({
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
             {myChecks.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
             ))}
           </>
         )}
@@ -598,7 +634,7 @@ export default function BoardApp({
           <>
             {myGigs.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myGigs.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} />
             ))}
           </>
         )}
