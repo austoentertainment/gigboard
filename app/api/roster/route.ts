@@ -19,9 +19,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
+  const { origin } = new URL(request.url);
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
     data: { display_name: displayName || null },
+    redirectTo: `${origin}/auth/callback?next=/set-password`,
   });
 
   if (error) {
