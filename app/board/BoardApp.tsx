@@ -295,24 +295,31 @@ function ManualForm({ onSave, onCancel, ping }: { onSave: (fields: LeadInsert) =
   );
 }
 
+function generatePassword() {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
 function Roster({ roster, onChanged, ping }: { roster: RosterUser[]; onChanged: () => void; ping: (m: string) => void }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<{ email: string; password: string; name: string } | null>(null);
 
-  const invite = async () => {
-    if (!email.trim()) return;
+  const create = async () => {
+    if (!email.trim() || password.length < 8) return;
     setBusy(true);
     const res = await fetch("/api/roster", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), displayName: name.trim() || null }),
+      body: JSON.stringify({ email: email.trim(), displayName: name.trim() || null, password }),
     });
     const data = await res.json();
     setBusy(false);
-    if (!res.ok) { ping(data.error || "Couldn't send that invite"); return; }
-    ping(`Invited ${name.trim() || email.trim()}`);
-    setEmail(""); setName("");
+    if (!res.ok) { ping(data.error || "Couldn't create that account"); return; }
+    setCreated({ email: email.trim(), password, name: name.trim() });
+    setEmail(""); setName(""); setPassword("");
     onChanged();
   };
 
@@ -329,9 +336,20 @@ function Roster({ roster, onChanged, ping }: { roster: RosterUser[]; onChanged: 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="DJ name (e.g., DJ Marcus)" style={{ flex: 1, minWidth: 160 }} />
         <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" type="email" style={{ flex: 1, minWidth: 200 }} />
-        <Btn kind="primary" onClick={invite} disabled={busy}>{busy ? "INVITING…" : "INVITE"}</Btn>
+        <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (8+ chars)" style={{ flex: 1, minWidth: 160 }} />
+        <Btn onClick={() => setPassword(generatePassword())}>GENERATE</Btn>
+        <Btn kind="primary" onClick={create} disabled={busy}>{busy ? "ADDING…" : "ADD DJ"}</Btn>
       </div>
-      {roster.length === 0 && <Empty text="No DJs yet. Invite your Residents and Associates — they'll get a sign-in link by email." />}
+      {created && (
+        <div style={{ background: T.raised, border: `1px solid ${T.green}66`, borderRadius: 8, padding: 14, fontSize: 13 }}>
+          <div style={{ fontWeight: 800, color: T.green, marginBottom: 6 }}>ACCOUNT CREATED — TELL {(created.name || created.email).toUpperCase()}</div>
+          <div>Email: <strong>{created.email}</strong></div>
+          <div>Password: <strong>{created.password}</strong></div>
+          <div style={{ color: T.dim, marginTop: 6, fontSize: 12 }}>Copy this down now — it won&apos;t be shown again here.</div>
+          <Btn small style={{ marginTop: 8 }} onClick={() => setCreated(null)}>DISMISS</Btn>
+        </div>
+      )}
+      {roster.length === 0 && <Empty text="No DJs yet. Add your Residents and Associates with an email + password, then tell them what it is." />}
       {roster.map((dj) => (
         <div key={dj.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: T.surface, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 14px" }}>
           <div>

@@ -14,16 +14,20 @@ export async function POST(request: Request) {
   const owner = await requireOwner();
   if (!owner) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { email, displayName } = await request.json();
+  const { email, displayName, password } = await request.json();
   if (!email || typeof email !== "string") {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
+  if (!password || typeof password !== "string" || password.length < 8) {
+    return NextResponse.json({ error: "password must be at least 8 characters" }, { status: 400 });
+  }
 
-  const { origin } = new URL(request.url);
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { display_name: displayName || null },
-    redirectTo: `${origin}/auth/callback?next=/set-password`,
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { display_name: displayName || null },
   });
 
   if (error) {
