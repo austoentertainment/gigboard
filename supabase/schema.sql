@@ -259,7 +259,6 @@ select
   l.client_vision,
   case when public.is_owner() then l.owner_notes else null end as owner_notes,
   l.dj_notes,
-  l.meeting_notes,
   l.payout,
   l.status,
   l.assigned_dj_id,
@@ -270,7 +269,8 @@ select
   exists (
     select 1 from public.availability_responses ar
     where ar.lead_id = l.id and ar.response = 'available'
-  ) as has_available
+  ) as has_available,
+  l.meeting_notes
 from public.leads l
 where
   public.is_owner()
