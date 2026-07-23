@@ -279,6 +279,11 @@ function LeadCard({
               ))}
             </Select>
           )}
+          {!djView && st === "meeting" && (
+            <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "checking" }, "Back to pipeline")}>
+              ← BACK TO PIPELINE
+            </Btn>
+          )}
           {!djView && st === "booked" && (
             <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "played" }, "Marked as played")}>
               MARK PLAYED
