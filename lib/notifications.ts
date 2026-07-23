@@ -10,10 +10,11 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoenterta
 function leadSummaryHtml(lead: Lead) {
   const d = fmtDate(lead.event_date);
   const tier = [lead.dj_tier, lead.prod_tier].filter(Boolean).join(" + ");
+  const total = (lead.payout || 0) + (lead.travel_rate || 0);
   return `
     <p><strong>${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}</strong></p>
     <p>${tier || "Tier TBD"}${lead.location ? ` — ${lead.location}` : ""}</p>
-    ${lead.payout ? `<p>$${lead.payout} payout</p>` : ""}
+    ${total ? `<p>$${total} payout${lead.travel_rate ? ` (includes $${lead.travel_rate} travel)` : ""}</p>` : ""}
   `;
 }
 

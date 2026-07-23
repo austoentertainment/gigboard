@@ -117,6 +117,8 @@ create table public.leads (
   dj_notes text,
   meeting_notes text,
   payout numeric,
+  travel_zone text check (travel_zone in ('Local', 'Extended Local', 'Regional', 'Central CA')),
+  travel_rate numeric,
   status text not null default 'checking' check (status in ('checking', 'meeting', 'booked', 'played', 'lost')),
   assigned_dj_id uuid references public.users(id),
   honeybook_ref text unique,
@@ -270,7 +272,9 @@ select
     select 1 from public.availability_responses ar
     where ar.lead_id = l.id and ar.response = 'available'
   ) as has_available,
-  l.meeting_notes
+  l.meeting_notes,
+  l.travel_zone,
+  l.travel_rate
 from public.leads l
 where
   public.is_owner()
@@ -290,7 +294,11 @@ create table public.company_settings (
   associate_rate numeric not null default 1000,
   marquee_rate numeric not null default 1500,
   modern_rate numeric not null default 500,
-  essential_rate numeric not null default 0
+  essential_rate numeric not null default 0,
+  travel_local_rate numeric not null default 0,
+  travel_extended_local_rate numeric not null default 100,
+  travel_regional_rate numeric not null default 300,
+  travel_central_ca_rate numeric not null default 400
 );
 
 insert into public.company_settings (id) values (1);

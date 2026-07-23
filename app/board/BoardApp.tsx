@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Database, DjTier, ProdTier } from "@/lib/supabase/types";
+import type { Database, DjTier, ProdTier, TravelZone } from "@/lib/supabase/types";
 import {
-  T, DJ_TIERS, LEAD_STATUS, fmtDate,
+  T, DJ_TIERS, TRAVEL_ZONES, LEAD_STATUS, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker,
 } from "./ui";
 
@@ -24,6 +24,21 @@ function tierRate(settings: CompanySettings | null, djTier: string, prodTier: st
   const djMap: Record<string, number> = { Headliner: settings.headliner_rate, Resident: settings.resident_rate, Associate: settings.associate_rate };
   const prodMap: Record<string, number> = { Marquee: settings.marquee_rate, Modern: settings.modern_rate, Essential: settings.essential_rate };
   return (djMap[djTier] || 0) + (prodMap[prodTier] || 0);
+}
+
+function travelRate(settings: CompanySettings | null, zone: string): number {
+  if (!settings) return 0;
+  const zoneMap: Record<string, number> = {
+    Local: settings.travel_local_rate,
+    "Extended Local": settings.travel_extended_local_rate,
+    Regional: settings.travel_regional_rate,
+    "Central CA": settings.travel_central_ca_rate,
+  };
+  return zoneMap[zone] || 0;
+}
+
+function totalPayout(lead: LeadRow): number {
+  return (lead.payout || 0) + (lead.travel_rate || 0);
 }
 
 function leadStatus(lead: LeadRow) {
@@ -74,6 +89,51 @@ function PayoutEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: string, pa
   );
 }
 
+function TravelEditor({
+  lead, companySettings, onSave,
+}: {
+  lead: LeadRow;
+  companySettings: CompanySettings | null;
+  onSave: (id: string, patch: { travel_zone: TravelZone | null; travel_rate: number | null }) => void;
+}) {
+  const [zone, setZone] = useState(lead.travel_zone || "");
+  const [rate, setRate] = useState(lead.travel_rate != null ? String(lead.travel_rate) : "");
+  const [dirty, setDirty] = useState(false);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>TRAVEL</span>
+      <Select
+        value={zone}
+        onChange={(e) => {
+          const z = e.target.value;
+          setZone(z);
+          setDirty(true);
+          if (!rate && z) setRate(String(travelRate(companySettings, z)));
+        }}
+        style={{ width: "auto", fontSize: 12, padding: "6px 8px" }}
+      >
+        <option value="">Pick zone…</option>
+        {TRAVEL_ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+      </Select>
+      <Input
+        type="number"
+        value={rate}
+        onChange={(e) => { setRate(e.target.value); setDirty(true); }}
+        style={{ width: 90 }}
+      />
+      {dirty && (
+        <Btn small kind="primary" onClick={() => {
+          onSave(lead.id, { travel_zone: (zone || null) as TravelZone | null, travel_rate: rate ? Number(rate) : null });
+          setDirty(false);
+        }}>
+          SAVE
+        </Btn>
+      )}
+    </div>
+  );
+}
+
 function MeetingNotesEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: string, notes: string) => void }) {
   const [value, setValue] = useState(lead.meeting_notes || "");
   const [dirty, setDirty] = useState(false);
@@ -96,7 +156,7 @@ function MeetingNotesEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: stri
 }
 
 function LeadCard({
-  lead, djView, roster, availability, myAnswer, highlighted,
+  lead, djView, roster, availability, myAnswer, highlighted, companySettings,
   onSetAvail, onUpdateLead, onDeleteLead, onSaveNotes,
 }: {
   lead: LeadRow;
@@ -105,6 +165,7 @@ function LeadCard({
   availability: AvailabilityRow[];
   myAnswer?: "available" | "pass";
   highlighted?: boolean;
+  companySettings: CompanySettings | null;
   onSetAvail: (leadId: string, answer: "available" | "pass") => void;
   onUpdateLead: (id: string, patch: LeadUpdate, msg?: string) => void;
   onDeleteLead: (id: string) => void;
@@ -141,7 +202,7 @@ function LeadCard({
             </div>
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 2 }}>
               {djView
-                ? [lead.location, lead.payout ? `$${lead.payout} payout` : null].filter(Boolean).join(" · ") || "details TBD"
+                ? [lead.location, totalPayout(lead) ? `$${totalPayout(lead)} payout` : null].filter(Boolean).join(" · ") || "details TBD"
                 : [tier, lead.location].filter(Boolean).join(" · ") || "tier TBD"}
             </div>
           </div>
@@ -161,6 +222,19 @@ function LeadCard({
               </span></span>
             )}
             <PayoutEditor lead={lead} onSave={(id, payout) => onUpdateLead(id, { payout }, "Payout updated")} />
+          </div>
+        )}
+
+        {!djView && (
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
+            <TravelEditor
+              lead={lead}
+              companySettings={companySettings}
+              onSave={(id, patch) => onUpdateLead(id, patch, "Travel updated")}
+            />
+            {totalPayout(lead) > 0 && (
+              <span>Total: <strong style={{ color: T.text }}>${totalPayout(lead)}</strong></span>
+            )}
           </div>
         )}
 
@@ -253,6 +327,7 @@ function ImportForm({
   const [parsed, setParsed] = useState<null | {
     name: string; contact: string; date: string; location: string;
     djTier: string; prodTier: string; upgrades: string; vision: string; payout: string;
+    travelZone: string; travelRate: string;
   }>(null);
 
   const parse = async () => {
@@ -267,7 +342,7 @@ function ImportForm({
       const data = await res.json();
       if (!res.ok) { ping(data.error || "Couldn't parse that — you can add it manually"); setBusy(false); return; }
       const suggestedPayout = data.djTier && data.prodTier ? tierRate(companySettings, data.djTier, data.prodTier) : 0;
-      setParsed({ ...data, payout: suggestedPayout ? String(suggestedPayout) : "" });
+      setParsed({ ...data, payout: suggestedPayout ? String(suggestedPayout) : "", travelZone: "", travelRate: "" });
     } catch {
       ping("Couldn't parse that — you can add it manually");
     }
@@ -282,6 +357,8 @@ function ImportForm({
       prod_tier: (parsed.prodTier || null) as ProdTier | null, upgrades: parsed.upgrades,
       client_vision: parsed.vision, source: "honeybook", status: "checking",
       payout: parsed.payout ? Number(parsed.payout) : null,
+      travel_zone: (parsed.travelZone || null) as TravelZone | null,
+      travel_rate: parsed.travelRate ? Number(parsed.travelRate) : null,
     });
   };
 
@@ -320,6 +397,29 @@ function ImportForm({
               )}
             </div>
           </Field>
+          <Field label="TRAVEL ZONE / RATE ($)">
+            <div style={{ display: "flex", gap: 6 }}>
+              <Select
+                value={parsed.travelZone}
+                onChange={(e) => {
+                  const z = e.target.value;
+                  const next = { ...parsed, travelZone: z };
+                  if (!parsed.travelRate && z) next.travelRate = String(travelRate(companySettings, z));
+                  setParsed(next);
+                }}
+                style={{ width: "auto" }}
+              >
+                <option value="">Pick zone…</option>
+                {TRAVEL_ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+              </Select>
+              <Input type="number" value={parsed.travelRate} onChange={(e) => setParsed({ ...parsed, travelRate: e.target.value })} style={{ flex: 1 }} />
+              {parsed.travelZone && (
+                <Btn small onClick={() => setParsed({ ...parsed, travelRate: String(travelRate(companySettings, parsed.travelZone)) })}>
+                  USE ${travelRate(companySettings, parsed.travelZone)}
+                </Btn>
+              )}
+            </div>
+          </Field>
           <Field label="UPGRADES"><Input value={parsed.upgrades} onChange={(e) => setParsed({ ...parsed, upgrades: e.target.value })} placeholder="Guac Booth, CO2, cold sparks…" /></Field>
           <Field label="CLIENT VISION"><TextArea value={parsed.vision} onChange={(e) => setParsed({ ...parsed, vision: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 8 }}>
@@ -343,6 +443,7 @@ function ManualForm({
   const [f, setF] = useState({
     name: "", contact: "", date: "", location: "", djTier: "", prodTier: "",
     upgrades: "", vision: "", source: "", notes: "", djNotes: "", payout: "",
+    travelZone: "", travelRate: "",
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   return (
@@ -373,6 +474,29 @@ function ManualForm({
             )}
           </div>
         </Field>
+        <Field label="TRAVEL ZONE / RATE ($)">
+          <div style={{ display: "flex", gap: 6 }}>
+            <Select
+              value={f.travelZone}
+              onChange={(e) => {
+                const z = e.target.value;
+                const next = { ...f, travelZone: z };
+                if (!f.travelRate && z) next.travelRate = String(travelRate(companySettings, z));
+                setF(next);
+              }}
+              style={{ width: "auto" }}
+            >
+              <option value="">Pick zone…</option>
+              {TRAVEL_ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+            </Select>
+            <Input type="number" value={f.travelRate} onChange={set("travelRate")} style={{ flex: 1 }} />
+            {f.travelZone && (
+              <Btn small onClick={() => setF({ ...f, travelRate: String(travelRate(companySettings, f.travelZone)) })}>
+                USE ${travelRate(companySettings, f.travelZone)}
+              </Btn>
+            )}
+          </div>
+        </Field>
       </div>
       <Field label="PRIVATE NOTES (OWNER ONLY)"><TextArea value={f.notes} onChange={set("notes")} /></Field>
       <Field label="NOTES FOR DJs (SHOWN ON DATE CHECK)"><TextArea value={f.djNotes} onChange={set("djNotes")} placeholder="Outdoor ceremony, load-in 3pm…" /></Field>
@@ -384,6 +508,8 @@ function ManualForm({
             dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
             upgrades: f.upgrades, client_vision: f.vision, source: "manual", owner_notes: f.notes,
             dj_notes: f.djNotes, payout: f.payout ? Number(f.payout) : null, status: "checking",
+            travel_zone: (f.travelZone || null) as TravelZone | null,
+            travel_rate: f.travelRate ? Number(f.travelRate) : null,
           });
         }}>SAVE LEAD</Btn>
         <Btn onClick={onCancel}>CANCEL</Btn>
@@ -474,6 +600,10 @@ function CompanySettings({
     marquee_rate: String(settings.marquee_rate),
     modern_rate: String(settings.modern_rate),
     essential_rate: String(settings.essential_rate),
+    travel_local_rate: String(settings.travel_local_rate),
+    travel_extended_local_rate: String(settings.travel_extended_local_rate),
+    travel_regional_rate: String(settings.travel_regional_rate),
+    travel_central_ca_rate: String(settings.travel_central_ca_rate),
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
 
@@ -498,6 +628,15 @@ function CompanySettings({
           <Field label="ESSENTIAL ($)"><Input type="number" value={f.essential_rate} onChange={set("essential_rate")} /></Field>
         </div>
       </div>
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.amber, marginBottom: 8 }}>TRAVEL RATES</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Field label="LOCAL ($)"><Input type="number" value={f.travel_local_rate} onChange={set("travel_local_rate")} /></Field>
+          <Field label="EXTENDED LOCAL ($)"><Input type="number" value={f.travel_extended_local_rate} onChange={set("travel_extended_local_rate")} /></Field>
+          <Field label="REGIONAL ($)"><Input type="number" value={f.travel_regional_rate} onChange={set("travel_regional_rate")} /></Field>
+          <Field label="CENTRAL CA ($)"><Input type="number" value={f.travel_central_ca_rate} onChange={set("travel_central_ca_rate")} /></Field>
+        </div>
+      </div>
       <Btn kind="primary" style={{ alignSelf: "flex-start" }} onClick={() => onSave({
         headliner_rate: Number(f.headliner_rate) || 0,
         resident_rate: Number(f.resident_rate) || 0,
@@ -505,6 +644,10 @@ function CompanySettings({
         marquee_rate: Number(f.marquee_rate) || 0,
         modern_rate: Number(f.modern_rate) || 0,
         essential_rate: Number(f.essential_rate) || 0,
+        travel_local_rate: Number(f.travel_local_rate) || 0,
+        travel_extended_local_rate: Number(f.travel_extended_local_rate) || 0,
+        travel_regional_rate: Number(f.travel_regional_rate) || 0,
+        travel_central_ca_rate: Number(f.travel_central_ca_rate) || 0,
       })}>
         SAVE RATES
       </Btn>
@@ -750,13 +893,13 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "ready").sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.amber, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "checking").sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -765,7 +908,7 @@ export default function BoardApp({
           <>
             {inMotion.length === 0 && <Empty text="Nothing in motion. When a date check comes back green, book the meeting and it moves here." />}
             {inMotion.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -774,7 +917,7 @@ export default function BoardApp({
           <>
             {archived.length === 0 && <Empty text="Played and lost leads end up here." />}
             {archived.map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -819,7 +962,7 @@ export default function BoardApp({
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
             {myChecks.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -828,7 +971,7 @@ export default function BoardApp({
           <>
             {myGigs.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myGigs.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}

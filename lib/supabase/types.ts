@@ -1,6 +1,7 @@
 export type LeadStatus = "checking" | "meeting" | "booked" | "played" | "lost";
 export type DjTier = "Headliner" | "Resident" | "Associate";
 export type ProdTier = "Marquee" | "Modern" | "Essential";
+export type TravelZone = "Local" | "Extended Local" | "Regional" | "Central CA";
 export type LeadSource = "honeybook" | "manual";
 export type AvailabilityAnswer = "available" | "pass";
 export type UserRole = "owner" | "dj";
@@ -67,6 +68,8 @@ export interface Database {
           dj_notes: string | null;
           meeting_notes: string | null;
           payout: number | null;
+          travel_zone: TravelZone | null;
+          travel_rate: number | null;
           status: LeadStatus;
           assigned_dj_id: string | null;
           honeybook_ref: string | null;
@@ -87,6 +90,8 @@ export interface Database {
           dj_notes?: string | null;
           meeting_notes?: string | null;
           payout?: number | null;
+          travel_zone?: TravelZone | null;
+          travel_rate?: number | null;
           status?: LeadStatus;
           assigned_dj_id?: string | null;
           honeybook_ref?: string | null;
@@ -105,6 +110,8 @@ export interface Database {
           dj_notes?: string | null;
           meeting_notes?: string | null;
           payout?: number | null;
+          travel_zone?: TravelZone | null;
+          travel_rate?: number | null;
           status?: LeadStatus;
           assigned_dj_id?: string | null;
           needs_review?: boolean;
@@ -156,6 +163,10 @@ export interface Database {
           marquee_rate: number;
           modern_rate: number;
           essential_rate: number;
+          travel_local_rate: number;
+          travel_extended_local_rate: number;
+          travel_regional_rate: number;
+          travel_central_ca_rate: number;
         };
         Insert: {
           id?: number;
@@ -165,6 +176,10 @@ export interface Database {
           marquee_rate?: number;
           modern_rate?: number;
           essential_rate?: number;
+          travel_local_rate?: number;
+          travel_extended_local_rate?: number;
+          travel_regional_rate?: number;
+          travel_central_ca_rate?: number;
         };
         Update: {
           headliner_rate?: number;
@@ -173,6 +188,10 @@ export interface Database {
           marquee_rate?: number;
           modern_rate?: number;
           essential_rate?: number;
+          travel_local_rate?: number;
+          travel_extended_local_rate?: number;
+          travel_regional_rate?: number;
+          travel_central_ca_rate?: number;
         };
         Relationships: [];
       };
@@ -193,6 +212,8 @@ export interface Database {
           dj_notes: string | null;
           meeting_notes: string | null;
           payout: number | null;
+          travel_zone: TravelZone | null;
+          travel_rate: number | null;
           status: LeadStatus;
           assigned_dj_id: string | null;
           source: LeadSource;
