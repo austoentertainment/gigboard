@@ -205,8 +205,15 @@ function LeadCard({
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>
-              {djView ? (tier || "Gig") : ([lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead")}
+            <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {djView ? (
+                <>
+                  <span>{[lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"}</span>
+                  {lead.client_name && tier && <Tag color={T.blue}>{tier}</Tag>}
+                </>
+              ) : (
+                [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"
+              )}
             </div>
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 2 }}>
               {djView

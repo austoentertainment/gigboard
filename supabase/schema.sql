@@ -252,7 +252,7 @@ create trigger trg_log_availability_response
 create view public.leads_feed as
 select
   l.id,
-  case when public.is_owner() then l.client_name else null end as client_name,
+  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.client_name else null end as client_name,
   case when public.is_owner() then l.contact else null end as contact,
   l.event_date,
   l.location,
@@ -276,7 +276,7 @@ select
   l.meeting_notes,
   l.travel_zone,
   l.travel_rate,
-  case when public.is_owner() then l.fiance_name else null end as fiance_name
+  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.fiance_name else null end as fiance_name
 from public.leads l
 where
   public.is_owner()
