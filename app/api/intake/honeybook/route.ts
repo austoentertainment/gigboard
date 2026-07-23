@@ -3,7 +3,8 @@ import { createHash } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseLeadWithClaude, LeadParseError } from "@/lib/parseLead";
 import { notifyDjsOfNewLead } from "@/lib/notifications";
-import type { DjTier, ProdTier } from "@/lib/supabase/types";
+import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
+import type { DjTier, ProdTier, TravelZone } from "@/lib/supabase/types";
 
 // Zapier's "New Inquiry" trigger field names aren't confirmed yet, so this
 // accepts whatever shape shows up and folds every present field into one
@@ -49,6 +50,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
+  const { data: settings } = await admin.from("company_settings").select("*").eq("id", 1).single();
+  const zone = (parsed.travelZone || guessTravelZone(parsed.location || "") || "") as TravelZone | "";
+  const payout = parsed.djTier && parsed.prodTier ? tierRate(settings, parsed.djTier, parsed.prodTier) : 0;
+  const travel = zone ? travelRate(settings, zone) : 0;
+
   const { data: lead, error } = await admin
     .from("leads")
     .insert({
@@ -64,6 +70,9 @@ export async function POST(request: Request) {
       status: "checking",
       needs_review: true,
       honeybook_ref: String(honeybookRef),
+      payout: payout || null,
+      travel_zone: zone || null,
+      travel_rate: travel || null,
     })
     .select("*")
     .single();

@@ -7,9 +7,10 @@ export type ParsedLead = {
   prodTier: string;
   upgrades: string;
   vision: string;
+  travelZone: string;
 };
 
-const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBook inquiry (email or copied text) for a wedding/event DJ company. Respond ONLY with a JSON object, no markdown fences, no preamble, with these keys (use "" when unknown):
+const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBook inquiry (email or copied text) for a wedding/event DJ company based in Orange County, California. Respond ONLY with a JSON object, no markdown fences, no preamble, with these keys (use "" when unknown):
 - client: client/couple name
 - contact: email or phone if present
 - date: event date as YYYY-MM-DD
@@ -18,6 +19,12 @@ const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBoo
 - prodTier: one of Marquee, Modern, Essential — only if the inquiry names a production tier/package that clearly maps to one
 - upgrades: comma-separated add-ons mentioned (photo booth / Guac Booth, CO2, cold sparks, uplighting, custom lighting, ceremony audio, etc.)
 - vision: 1-3 sentences capturing what the client says they want the event to feel like, in their words where possible
+- travelZone: one of Local, Extended Local, Regional, Central CA, based on the event location's distance from Orange County — use your knowledge of California geography to classify it, even if the exact city isn't in these examples:
+  - Local: Greater Orange County, San Clemente, Fullerton, Long Beach
+  - Extended Local: DTLA, Pasadena, Riverside, and similar Greater LA / Inland Empire cities
+  - Regional: Desert Cities (Palm Springs etc.), San Diego, Arrowhead, Big Bear
+  - Central CA: Central Coast, Mammoth, Bay Area, and similarly far Northern/Central California
+  Use "" only if the location is missing or genuinely not a California location.
 
 INQUIRY:
 ${raw}`;
@@ -72,6 +79,7 @@ export async function parseLeadWithClaude(raw: string): Promise<ParsedLead> {
       prodTier: ["Marquee", "Modern", "Essential"].includes(obj.prodTier) ? obj.prodTier : "",
       upgrades: obj.upgrades || "",
       vision: obj.vision || "",
+      travelZone: ["Local", "Extended Local", "Regional", "Central CA"].includes(obj.travelZone) ? obj.travelZone : "",
     };
   } catch {
     throw new LeadParseError("Couldn't parse that inquiry", 502);

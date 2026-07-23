@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, DjTier, ProdTier, TravelZone } from "@/lib/supabase/types";
+import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import {
   T, DJ_TIERS, TRAVEL_ZONES, LEAD_STATUS, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker,
@@ -18,24 +19,6 @@ type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "availab
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
-
-function tierRate(settings: CompanySettings | null, djTier: string, prodTier: string): number {
-  if (!settings) return 0;
-  const djMap: Record<string, number> = { Headliner: settings.headliner_rate, Resident: settings.resident_rate, Associate: settings.associate_rate };
-  const prodMap: Record<string, number> = { Marquee: settings.marquee_rate, Modern: settings.modern_rate, Essential: settings.essential_rate };
-  return (djMap[djTier] || 0) + (prodMap[prodTier] || 0);
-}
-
-function travelRate(settings: CompanySettings | null, zone: string): number {
-  if (!settings) return 0;
-  const zoneMap: Record<string, number> = {
-    Local: settings.travel_local_rate,
-    "Extended Local": settings.travel_extended_local_rate,
-    Regional: settings.travel_regional_rate,
-    "Central CA": settings.travel_central_ca_rate,
-  };
-  return zoneMap[zone] || 0;
-}
 
 function totalPayout(lead: LeadRow): number {
   return (lead.payout || 0) + (lead.travel_rate || 0);
@@ -342,7 +325,14 @@ function ImportForm({
       const data = await res.json();
       if (!res.ok) { ping(data.error || "Couldn't parse that — you can add it manually"); setBusy(false); return; }
       const suggestedPayout = data.djTier && data.prodTier ? tierRate(companySettings, data.djTier, data.prodTier) : 0;
-      setParsed({ ...data, payout: suggestedPayout ? String(suggestedPayout) : "", travelZone: "", travelRate: "" });
+      const zone = data.travelZone || guessTravelZone(data.location || "") || "";
+      const suggestedTravel = zone ? travelRate(companySettings, zone) : 0;
+      setParsed({
+        ...data,
+        payout: suggestedPayout ? String(suggestedPayout) : "",
+        travelZone: zone,
+        travelRate: suggestedTravel ? String(suggestedTravel) : "",
+      });
     } catch {
       ping("Couldn't parse that — you can add it manually");
     }
@@ -454,7 +444,21 @@ function ManualForm({
         <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} placeholder="email or phone" /></Field>
         <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
       </div>
-      <Field label="LOCATION"><Input value={f.location} onChange={set("location")} placeholder="The Colony House, Anaheim" /></Field>
+      <Field label="LOCATION">
+        <Input
+          value={f.location}
+          onChange={(e) => {
+            const location = e.target.value;
+            const next = { ...f, location };
+            if (!f.travelZone) {
+              const guessed = guessTravelZone(location);
+              if (guessed) { next.travelZone = guessed; next.travelRate = String(travelRate(companySettings, guessed)); }
+            }
+            setF(next);
+          }}
+          placeholder="The Colony House, Anaheim"
+        />
+      </Field>
       <TierPicker djTier={f.djTier} prodTier={f.prodTier} onChange={({ djTier, prodTier }) => {
         const next = { ...f, djTier, prodTier };
         if (!f.payout && djTier && prodTier) next.payout = String(tierRate(companySettings, djTier, prodTier));
