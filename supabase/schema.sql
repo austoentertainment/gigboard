@@ -188,6 +188,12 @@ alter table public.events enable row level security;
 create policy "events_owner_select" on public.events
   for select using (public.is_owner());
 
+-- Deleting a lead cascades into deleting its events rows. Without a delete
+-- policy here, RLS blocks that cascade (default deny) and the whole lead
+-- delete fails.
+create policy "events_owner_delete" on public.events
+  for delete using (public.is_owner());
+
 create function public.log_lead_status_change()
 returns trigger
 language plpgsql
