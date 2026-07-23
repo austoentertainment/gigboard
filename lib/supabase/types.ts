@@ -56,6 +56,7 @@ export interface Database {
         Row: {
           id: string;
           client_name: string | null;
+          fiance_name: string | null;
           contact: string | null;
           event_date: string | null;
           location: string | null;
@@ -78,6 +79,7 @@ export interface Database {
         };
         Insert: {
           client_name?: string | null;
+          fiance_name?: string | null;
           contact?: string | null;
           event_date?: string | null;
           location?: string | null;
@@ -99,6 +101,7 @@ export interface Database {
         };
         Update: {
           client_name?: string | null;
+          fiance_name?: string | null;
           contact?: string | null;
           event_date?: string | null;
           location?: string | null;
@@ -201,6 +204,7 @@ export interface Database {
         Row: {
           id: string;
           client_name: string | null;
+          fiance_name: string | null;
           contact: string | null;
           event_date: string | null;
           location: string | null;

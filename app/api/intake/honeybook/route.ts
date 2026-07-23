@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     .from("leads")
     .insert({
       client_name: parsed.name,
+      fiance_name: parsed.fiance,
       contact: parsed.contact,
       event_date: parsed.date || null,
       location: parsed.location,

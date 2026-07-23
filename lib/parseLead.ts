@@ -1,5 +1,6 @@
 export type ParsedLead = {
   name: string;
+  fiance: string;
   contact: string;
   date: string;
   location: string;
@@ -11,7 +12,8 @@ export type ParsedLead = {
 };
 
 const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBook inquiry (email or copied text) for a wedding/event DJ company based in Orange County, California. Respond ONLY with a JSON object, no markdown fences, no preamble, with these keys (use "" when unknown):
-- client: client/couple name
+- client: the first named person (e.g. "Jess & Marco" → "Jess"). If only one name is given, use it here and leave fiance "".
+- fiance: the second named person if the inquiry names a couple (e.g. "Jess & Marco" → "Marco"), else ""
 - contact: email or phone if present
 - date: event date as YYYY-MM-DD
 - location: venue and/or city as one line (e.g. "The Colony House, Anaheim")
@@ -72,6 +74,7 @@ export async function parseLeadWithClaude(raw: string): Promise<ParsedLead> {
     const obj = JSON.parse(clean);
     return {
       name: obj.client || "",
+      fiance: obj.fiance || "",
       contact: obj.contact || "",
       date: obj.date || "",
       location: obj.location || "",

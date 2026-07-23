@@ -206,7 +206,7 @@ function LeadCard({
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>
-              {djView ? (tier || "Gig") : (lead.client_name || "Unnamed lead")}
+              {djView ? (tier || "Gig") : ([lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead")}
             </div>
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 2 }}>
               {djView
@@ -338,7 +338,7 @@ function ImportForm({
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [parsed, setParsed] = useState<null | {
-    name: string; contact: string; date: string; location: string;
+    name: string; fianceName: string; contact: string; date: string; location: string;
     djTier: string; prodTier: string; upgrades: string; vision: string; payout: string;
     travelZone: string; travelRate: string;
   }>(null);
@@ -359,6 +359,7 @@ function ImportForm({
       const suggestedTravel = zone ? travelRate(companySettings, zone) : 0;
       setParsed({
         ...data,
+        fianceName: data.fiance || "",
         payout: suggestedPayout ? String(suggestedPayout) : "",
         travelZone: zone,
         travelRate: suggestedTravel ? String(suggestedTravel) : "",
@@ -372,7 +373,7 @@ function ImportForm({
   const save = () => {
     if (!parsed) return;
     onSave({
-      client_name: parsed.name, contact: parsed.contact, event_date: parsed.date || null,
+      client_name: parsed.name, fiance_name: parsed.fianceName, contact: parsed.contact, event_date: parsed.date || null,
       location: parsed.location, dj_tier: (parsed.djTier || null) as DjTier | null,
       prod_tier: (parsed.prodTier || null) as ProdTier | null, upgrades: parsed.upgrades,
       client_vision: parsed.vision, source: "honeybook", status: "checking",
@@ -399,6 +400,7 @@ function ImportForm({
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", color: T.green }}>CHECK IT BEFORE IT GOES LIVE</div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Field label="CLIENT"><Input value={parsed.name} onChange={(e) => setParsed({ ...parsed, name: e.target.value })} /></Field>
+            <Field label="FIANCÉ / PARTNER"><Input value={parsed.fianceName} onChange={(e) => setParsed({ ...parsed, fianceName: e.target.value })} /></Field>
             <Field label="EVENT DATE"><Input type="date" value={parsed.date} onChange={(e) => setParsed({ ...parsed, date: e.target.value })} /></Field>
           </div>
           <Field label="LOCATION"><Input value={parsed.location} onChange={(e) => setParsed({ ...parsed, location: e.target.value })} placeholder="The Colony House, Anaheim" /></Field>
@@ -461,7 +463,7 @@ function ManualForm({
   companySettings: CompanySettings | null;
 }) {
   const [f, setF] = useState({
-    name: "", contact: "", date: "", location: "", djTier: "", prodTier: "",
+    name: "", fianceName: "", contact: "", date: "", location: "", djTier: "", prodTier: "",
     upgrades: "", vision: "", source: "", notes: "", djNotes: "", payout: "",
     travelZone: "", travelRate: "",
   });
@@ -470,7 +472,8 @@ function ManualForm({
     <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.amber }}>ADD LEAD MANUALLY</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Field label="CLIENT"><Input value={f.name} onChange={set("name")} placeholder="Jess & Marco" /></Field>
+        <Field label="CLIENT"><Input value={f.name} onChange={set("name")} placeholder="Jess" /></Field>
+        <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} placeholder="Marco" /></Field>
         <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} placeholder="email or phone" /></Field>
         <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
       </div>
@@ -538,7 +541,7 @@ function ManualForm({
         <Btn kind="primary" onClick={() => {
           if (!f.name.trim() && !f.date) { ping("Give it at least a name or a date"); return; }
           onSave({
-            client_name: f.name, contact: f.contact, event_date: f.date || null, location: f.location,
+            client_name: f.name, fiance_name: f.fianceName, contact: f.contact, event_date: f.date || null, location: f.location,
             dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
             upgrades: f.upgrades, client_vision: f.vision, source: "manual", owner_notes: f.notes,
             dj_notes: f.djNotes, payout: f.payout ? Number(f.payout) : null, status: "checking",

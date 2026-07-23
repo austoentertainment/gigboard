@@ -105,6 +105,7 @@ create policy "dj_profiles_insert" on public.dj_profiles
 create table public.leads (
   id uuid primary key default gen_random_uuid(),
   client_name text,
+  fiance_name text,
   contact text,
   event_date date,
   location text,
@@ -274,7 +275,8 @@ select
   ) as has_available,
   l.meeting_notes,
   l.travel_zone,
-  l.travel_rate
+  l.travel_rate,
+  case when public.is_owner() then l.fiance_name else null end as fiance_name
 from public.leads l
 where
   public.is_owner()
