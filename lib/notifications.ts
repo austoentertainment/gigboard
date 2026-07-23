@@ -11,8 +11,10 @@ function leadSummaryHtml(lead: Lead) {
   const d = fmtDate(lead.event_date);
   const tier = [lead.dj_tier, lead.prod_tier].filter(Boolean).join(" + ");
   const total = (lead.payout || 0) + (lead.travel_rate || 0);
+  const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ");
   return `
     <p><strong>${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}</strong></p>
+    ${names ? `<p>${names}</p>` : ""}
     <p>${tier || "Tier TBD"}${lead.location ? ` — ${lead.location}` : ""}</p>
     ${total ? `<p>$${total} payout${lead.travel_rate ? ` (includes $${lead.travel_rate} travel)` : ""}</p>` : ""}
   `;
