@@ -387,7 +387,7 @@ export default function BoardApp({
   const [toast, setToast] = useState("");
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
 
-  const ping = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 2600); }, []);
+  const ping = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 5000); }, []);
 
   const loadData = useCallback(async () => {
     const { data: leadsData } = await supabase.from("leads_feed").select("*").order("created_at", { ascending: false });
@@ -438,7 +438,7 @@ export default function BoardApp({
     const { error } = await supabase
       .from("availability_responses")
       .upsert({ lead_id: leadId, dj_user_id: userId, response: answer }, { onConflict: "lead_id,dj_user_id" });
-    if (error) { ping("Couldn't save — check connection and retry"); return; }
+    if (error) { ping(`Couldn't save: ${error.message}`); return; }
     ping(answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date");
     loadData();
     if (answer === "available") {
@@ -452,7 +452,7 @@ export default function BoardApp({
 
   const updateLead = async (id: string, patch: LeadUpdate, msg?: string) => {
     const { error } = await supabase.from("leads").update(patch).eq("id", id);
-    if (error) { ping("Couldn't save — check connection and retry"); return; }
+    if (error) { ping(`Couldn't save: ${error.message}`); return; }
     if (msg) ping(msg);
     loadData();
   };
@@ -460,14 +460,14 @@ export default function BoardApp({
   const deleteLead = async (id: string) => {
     if (!window.confirm("Delete this lead entirely?")) return;
     const { error } = await supabase.from("leads").delete().eq("id", id);
-    if (error) { ping("Couldn't delete — check connection and retry"); return; }
+    if (error) { ping(`Couldn't delete: ${error.message}`); return; }
     ping("Lead deleted");
     loadData();
   };
 
   const addLead = async (fields: LeadInsert) => {
     const { data, error } = await supabase.from("leads").insert(fields).select("id").single();
-    if (error) { ping("Couldn't save — check connection and retry"); return; }
+    if (error) { ping(`Couldn't save: ${error.message}`); return; }
     ping("Lead is on the board — date check is live");
     setShowAdd(false);
     loadData();
@@ -664,6 +664,7 @@ export default function BoardApp({
           background: T.raised, border: `1px solid ${T.amber}66`, color: T.text,
           padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
           boxShadow: "0 6px 24px rgba(0,0,0,.5)", zIndex: 50,
+          maxWidth: "90vw", textAlign: "center",
         }}>
           {toast}
         </div>
