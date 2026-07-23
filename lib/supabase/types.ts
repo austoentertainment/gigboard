@@ -65,6 +65,7 @@ export interface Database {
           source: LeadSource;
           owner_notes: string | null;
           dj_notes: string | null;
+          meeting_notes: string | null;
           payout: number | null;
           status: LeadStatus;
           assigned_dj_id: string | null;
@@ -84,6 +85,7 @@ export interface Database {
           source?: LeadSource;
           owner_notes?: string | null;
           dj_notes?: string | null;
+          meeting_notes?: string | null;
           payout?: number | null;
           status?: LeadStatus;
           assigned_dj_id?: string | null;
@@ -101,6 +103,7 @@ export interface Database {
           client_vision?: string | null;
           owner_notes?: string | null;
           dj_notes?: string | null;
+          meeting_notes?: string | null;
           payout?: number | null;
           status?: LeadStatus;
           assigned_dj_id?: string | null;
@@ -144,6 +147,35 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+      company_settings: {
+        Row: {
+          id: number;
+          headliner_rate: number;
+          resident_rate: number;
+          associate_rate: number;
+          marquee_rate: number;
+          modern_rate: number;
+          essential_rate: number;
+        };
+        Insert: {
+          id?: number;
+          headliner_rate?: number;
+          resident_rate?: number;
+          associate_rate?: number;
+          marquee_rate?: number;
+          modern_rate?: number;
+          essential_rate?: number;
+        };
+        Update: {
+          headliner_rate?: number;
+          resident_rate?: number;
+          associate_rate?: number;
+          marquee_rate?: number;
+          modern_rate?: number;
+          essential_rate?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       leads_feed: {
@@ -159,6 +191,7 @@ export interface Database {
           client_vision: string | null;
           owner_notes: string | null;
           dj_notes: string | null;
+          meeting_notes: string | null;
           payout: number | null;
           status: LeadStatus;
           assigned_dj_id: string | null;

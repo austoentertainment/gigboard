@@ -115,6 +115,7 @@ create table public.leads (
   source text not null default 'manual' check (source in ('honeybook', 'manual')),
   owner_notes text,
   dj_notes text,
+  meeting_notes text,
   payout numeric,
   status text not null default 'checking' check (status in ('checking', 'meeting', 'booked', 'played', 'lost')),
   assigned_dj_id uuid references public.users(id),
@@ -258,6 +259,7 @@ select
   l.client_vision,
   case when public.is_owner() then l.owner_notes else null end as owner_notes,
   l.dj_notes,
+  l.meeting_notes,
   l.payout,
   l.status,
   l.assigned_dj_id,
@@ -276,3 +278,27 @@ where
   or (l.assigned_dj_id = auth.uid() and l.status in ('booked', 'played'));
 
 grant select on public.leads_feed to authenticated;
+
+-- ============================================================
+-- company_settings (singleton — tier rate table)
+-- ============================================================
+
+create table public.company_settings (
+  id int primary key default 1 check (id = 1),
+  headliner_rate numeric not null default 3000,
+  resident_rate numeric not null default 2000,
+  associate_rate numeric not null default 1000,
+  marquee_rate numeric not null default 1500,
+  modern_rate numeric not null default 500,
+  essential_rate numeric not null default 0
+);
+
+insert into public.company_settings (id) values (1);
+
+alter table public.company_settings enable row level security;
+
+create policy "company_settings_select" on public.company_settings
+  for select using (true);
+
+create policy "company_settings_update" on public.company_settings
+  for update using (public.is_owner());
