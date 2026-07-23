@@ -170,11 +170,11 @@ function LeadCard({
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "14px 8px", flexShrink: 0 }}>
+      <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 8px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
-        <div style={{ fontSize: 26, fontWeight: 900, lineHeight: 1, fontFamily: "'Archivo', system-ui, sans-serif" }}>{d.day}</div>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", color: T.dim }}>{d.mon} {d.year ? String(d.year).slice(2) : ""}</div>
-        {d.dow && <div style={{ fontSize: 10, color: T.dim }}>{d.dow}</div>}
+        <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.12em", lineHeight: 1.4, marginTop: 4 }}>{d.mon}</div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, fontFamily: "'Archivo', system-ui, sans-serif" }}>{d.day}</div>
+        <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{[d.dow, d.year ? `'${String(d.year).slice(2)}` : ""].filter(Boolean).join(" ")}</div>
       </div>
 
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
