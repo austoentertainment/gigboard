@@ -34,8 +34,11 @@ export async function notifyDjsOfNewLead(lead: Lead) {
   for (const dj of djs) {
     const profile = profiles?.find((p) => p.user_id === dj.id);
     if (profile && profile.notify_email === false) continue;
+    // Empty visibility means the owner hasn't qualified this DJ for any
+    // tier yet — that's "not eligible for anything", not "eligible for
+    // everything", so no fallback to "no tiers set = show all" here.
     const visibility = (profile?.dj_tier_visibility ?? []) as DjTier[];
-    const tierMatches = visibility.length === 0 || !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
+    const tierMatches = !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
     if (!tierMatches) continue;
 
     await sendEmail({

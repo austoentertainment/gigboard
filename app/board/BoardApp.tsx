@@ -557,7 +557,15 @@ function generatePassword() {
   return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-function Roster({ roster, onChanged, ping }: { roster: RosterUser[]; onChanged: () => void; ping: (m: string) => void }) {
+function Roster({
+  roster, rosterProfiles, onChanged, onSetTiers, ping,
+}: {
+  roster: RosterUser[];
+  rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[] }[];
+  onChanged: () => void;
+  onSetTiers: (djId: string, tiers: DjTier[]) => void;
+  ping: (m: string) => void;
+}) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -607,15 +615,42 @@ function Roster({ roster, onChanged, ping }: { roster: RosterUser[]; onChanged: 
         </div>
       )}
       {roster.length === 0 && <Empty text="No DJs yet. Add your Residents and Associates with an email + password, then tell them what it is." />}
-      {roster.map((dj) => (
-        <div key={dj.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: T.surface, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 14px" }}>
-          <div>
-            <div style={{ fontWeight: 700 }}>{dj.display_name || "(pending sign-in)"}</div>
-            <div style={{ fontSize: 12, color: T.dim }}>{dj.email}</div>
+      {roster.map((dj) => {
+        const tiers = rosterProfiles.find((p) => p.user_id === dj.id)?.dj_tier_visibility ?? [];
+        return (
+          <div key={dj.id} style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{dj.display_name || "(pending sign-in)"}</div>
+                <div style={{ fontSize: 12, color: T.dim }}>{dj.email}</div>
+              </div>
+              <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => remove(dj.id, dj.display_name || dj.email)}>✕</Btn>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>TIERS</span>
+              {DJ_TIERS.map((t) => {
+                const active = tiers.includes(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => onSetTiers(dj.id, active ? tiers.filter((x) => x !== t) : [...tiers, t])}
+                    style={{
+                      fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                      padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                      background: active ? T.amber : "transparent",
+                      color: active ? "#1A1502" : T.dim,
+                      border: `1px solid ${active ? T.amber : T.line}`,
+                    }}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+              {tiers.length === 0 && <span style={{ fontSize: 11, color: T.red }}>not qualified for any tier yet</span>}
+            </div>
           </div>
-          <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => remove(dj.id, dj.display_name || dj.email)}>✕</Btn>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -706,6 +741,7 @@ export default function BoardApp({
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [roster, setRoster] = useState<RosterUser[]>([]);
+  const [rosterProfiles, setRosterProfiles] = useState<{ user_id: string; dj_tier_visibility: DjTier[] }[]>([]);
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myTiers, setMyTiers] = useState<string[]>([]);
@@ -725,6 +761,11 @@ export default function BoardApp({
     if (role === "owner") {
       const { data: rosterData } = await supabase.from("users").select("id,email,display_name").eq("role", "dj").order("display_name");
       setRoster(rosterData ?? []);
+      const { data: profilesData } = await supabase
+        .from("dj_profiles")
+        .select("user_id, dj_tier_visibility")
+        .in("user_id", (rosterData ?? []).map((d) => d.id).length ? (rosterData ?? []).map((d) => d.id) : ["00000000-0000-0000-0000-000000000000"]);
+      setRosterProfiles(profilesData ?? []);
       const { data: availData } = await supabase.from("availability_responses").select("lead_id,dj_user_id,response");
       setAvailability(availData ?? []);
       const { data: settingsData } = await supabase.from("company_settings").select("*").eq("id", 1).single();
@@ -758,10 +799,11 @@ export default function BoardApp({
     router.push("/login");
   };
 
-  const toggleTier = async (t: string) => {
-    const next = myTiers.includes(t) ? myTiers.filter((x) => x !== t) : [...myTiers, t];
-    setMyTiers(next);
-    await supabase.from("dj_profiles").update({ dj_tier_visibility: next as DjTier[] }).eq("user_id", userId);
+  const saveDjTiers = async (djId: string, tiers: DjTier[]) => {
+    const { error } = await supabase.from("dj_profiles").update({ dj_tier_visibility: tiers }).eq("user_id", djId);
+    if (error) { ping(`Couldn't save: ${error.message}`); return; }
+    ping("Tiers updated");
+    loadData();
   };
 
   const setAvail = async (leadId: string, answer: "available" | "pass") => {
@@ -853,7 +895,11 @@ export default function BoardApp({
     .filter((s) => s.count > 0)
     .sort((a, b) => b.count - a.count);
 
-  const tierVisible = (l: LeadRow) => myTiers.length === 0 || !l.dj_tier || myTiers.includes(l.dj_tier);
+  // No dj_tier on the lead means no tier restriction applies. But an empty
+  // myTiers means the owner hasn't qualified this DJ for any tier yet — that
+  // no longer means "show everything" (a preference default), it means
+  // "not qualified for anything yet" (an eligibility default).
+  const tierVisible = (l: LeadRow) => !l.dj_tier || myTiers.includes(l.dj_tier);
   const myChecks = checking.filter(tierVisible);
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
@@ -1006,7 +1052,9 @@ export default function BoardApp({
           </>
         )}
 
-        {role === "owner" && activeTab === "roster" && <Roster roster={roster} onChanged={loadData} ping={ping} />}
+        {role === "owner" && activeTab === "roster" && (
+          <Roster roster={roster} rosterProfiles={rosterProfiles} onChanged={loadData} onSetTiers={saveDjTiers} ping={ping} />
+        )}
 
         {role === "owner" && activeTab === "settings" && companySettings && (
           <CompanySettings settings={companySettings} onSave={saveSettings} />
@@ -1015,34 +1063,13 @@ export default function BoardApp({
         {role === "dj" && activeTab === "checks" && (
           <>
             {roster.length === 0 && checking.length === 0 && <Empty text="No open date checks yet." />}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", color: T.dim }}>SHOW ME</span>
-              {DJ_TIERS.map((t) => {
-                const on = myTiers.length === 0 || myTiers.includes(t);
-                const explicit = myTiers.includes(t);
-                return (
-                  <button
-                    key={t}
-                    onClick={() => toggleTier(t)}
-                    style={{
-                      fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
-                      padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-                      background: explicit ? T.amber : "transparent",
-                      color: explicit ? "#1A1502" : on ? T.text : T.dim,
-                      border: `1px solid ${explicit ? T.amber : T.line}`,
-                      opacity: on ? 1 : 0.55,
-                    }}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
-              <span style={{ fontSize: 11, color: T.dim }}>
-                {myTiers.length === 0 ? "showing all tiers — tap to filter" : `filtering: ${myTiers.join(", ")}`}
-              </span>
+            <div style={{ fontSize: 11, color: T.dim }}>
+              {myTiers.length === 0
+                ? "No tiers assigned yet — ask Austin to set your tiers in Roster."
+                : `Your tiers: ${myTiers.join(", ")}`}
             </div>
-            {myChecks.length === 0 && checking.length > 0 && (
-              <Empty text="No date checks match your tier filter. Tap the tiers above to widen it." />
+            {myTiers.length > 0 && myChecks.length === 0 && checking.length > 0 && (
+              <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
             {myChecks.sort(byDate).map((l) => (

@@ -63,7 +63,7 @@ export async function GET(request: Request) {
       const profile = profiles?.find((p) => p.user_id === dj.id);
       if (profile && profile.notify_email === false) continue;
       const visibility = (profile?.dj_tier_visibility ?? []) as DjTier[];
-      const tierMatches = visibility.length === 0 || !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
+      const tierMatches = !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
       if (!tierMatches) continue;
 
       const d = fmtDate(lead.event_date);
