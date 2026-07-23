@@ -162,6 +162,52 @@ function MeetingNotesEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: stri
   );
 }
 
+function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patch: LeadUpdate) => void; onCancel: () => void }) {
+  const [f, setF] = useState({
+    name: lead.client_name || "",
+    fianceName: lead.fiance_name || "",
+    contact: lead.contact || "",
+    date: lead.event_date || "",
+    location: lead.location || "",
+    djTier: lead.dj_tier || "",
+    prodTier: lead.prod_tier || "",
+    upgrades: lead.upgrades || "",
+    vision: lead.client_vision || "",
+    notes: lead.owner_notes || "",
+    djNotes: lead.dj_notes || "",
+  });
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+
+  return (
+    <div style={{ background: T.raised, border: `1px solid ${T.amber}55`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.amber }}>EDIT LEAD</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Field label="CLIENT"><Input value={f.name} onChange={set("name")} /></Field>
+        <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} /></Field>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} /></Field>
+        <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
+      </div>
+      <Field label="LOCATION"><Input value={f.location} onChange={set("location")} /></Field>
+      <TierPicker djTier={f.djTier} prodTier={f.prodTier} onChange={({ djTier, prodTier }) => setF({ ...f, djTier, prodTier })} />
+      <Field label="UPGRADES"><Input value={f.upgrades} onChange={set("upgrades")} /></Field>
+      <Field label="CLIENT VISION"><TextArea value={f.vision} onChange={set("vision")} /></Field>
+      <Field label="PRIVATE NOTES (OWNER ONLY)"><TextArea value={f.notes} onChange={set("notes")} /></Field>
+      <Field label="NOTES FOR DJs (SHOWN ON DATE CHECK)"><TextArea value={f.djNotes} onChange={set("djNotes")} /></Field>
+      <div style={{ fontSize: 11.5, color: T.dim }}>Payout, travel, and deposit status are edited directly on the card, not here.</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Btn kind="primary" onClick={() => onSave({
+          client_name: f.name, fiance_name: f.fianceName, contact: f.contact, event_date: f.date || null,
+          location: f.location, dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
+          upgrades: f.upgrades, client_vision: f.vision, owner_notes: f.notes, dj_notes: f.djNotes,
+        })}>SAVE CHANGES</Btn>
+        <Btn onClick={onCancel}>CANCEL</Btn>
+      </div>
+    </div>
+  );
+}
+
 function LeadCard({
   lead, djView, roster, availability, myAnswer, highlighted, companySettings,
   onSetAvail, onUpdateLead, onDeleteLead, onSaveNotes,
@@ -178,6 +224,7 @@ function LeadCard({
   onDeleteLead: (id: string) => void;
   onSaveNotes: (id: string, notes: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const st = leadStatus(lead);
   const s = LEAD_STATUS[st];
   const d = fmtDate(lead.event_date);
@@ -203,6 +250,14 @@ function LeadCard({
       </div>
 
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+        {editing ? (
+          <EditLeadForm
+            lead={lead}
+            onSave={(patch) => { onUpdateLead(lead.id, patch, "Lead updated"); setEditing(false); }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -346,9 +401,14 @@ function LeadCard({
             </Btn>
           )}
           {!djView && (
+            <Btn kind="ghost" small onClick={() => setEditing(true)}>EDIT</Btn>
+          )}
+          {!djView && (
             <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => onDeleteLead(lead.id)}>✕</Btn>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );
