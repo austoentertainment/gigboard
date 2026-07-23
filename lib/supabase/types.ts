@@ -71,6 +71,8 @@ export interface Database {
           payout: number | null;
           travel_zone: TravelZone | null;
           travel_rate: number | null;
+          deposit_paid: boolean;
+          paid_in_full: boolean;
           status: LeadStatus;
           assigned_dj_id: string | null;
           honeybook_ref: string | null;
@@ -94,6 +96,8 @@ export interface Database {
           payout?: number | null;
           travel_zone?: TravelZone | null;
           travel_rate?: number | null;
+          deposit_paid?: boolean;
+          paid_in_full?: boolean;
           status?: LeadStatus;
           assigned_dj_id?: string | null;
           honeybook_ref?: string | null;
@@ -115,6 +119,8 @@ export interface Database {
           payout?: number | null;
           travel_zone?: TravelZone | null;
           travel_rate?: number | null;
+          deposit_paid?: boolean;
+          paid_in_full?: boolean;
           status?: LeadStatus;
           assigned_dj_id?: string | null;
           needs_review?: boolean;
@@ -218,6 +224,8 @@ export interface Database {
           payout: number | null;
           travel_zone: TravelZone | null;
           travel_rate: number | null;
+          deposit_paid: boolean | null;
+          paid_in_full: boolean | null;
           status: LeadStatus;
           assigned_dj_id: string | null;
           source: LeadSource;

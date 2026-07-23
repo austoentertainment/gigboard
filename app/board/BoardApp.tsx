@@ -221,9 +221,29 @@ function LeadCard({
                 : [tier, lead.location].filter(Boolean).join(" · ") || "tier TBD"}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
-            <Tag color={s.color}>{s.label}</Tag>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
+              <Tag color={s.color}>{s.label}</Tag>
+            </div>
+            {!djView && ["meeting", "booked", "played"].includes(st) && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <Btn
+                  kind={lead.deposit_paid ? "green" : "ghost"}
+                  small
+                  onClick={() => onUpdateLead(lead.id, { deposit_paid: !lead.deposit_paid }, lead.deposit_paid ? "Deposit unmarked" : "Deposit marked paid")}
+                >
+                  {lead.deposit_paid ? "✓ " : ""}DEPOSIT PAID
+                </Btn>
+                <Btn
+                  kind={lead.paid_in_full ? "green" : "ghost"}
+                  small
+                  onClick={() => onUpdateLead(lead.id, { paid_in_full: !lead.paid_in_full }, lead.paid_in_full ? "Unmarked paid in full" : "Marked paid in full")}
+                >
+                  {lead.paid_in_full ? "✓ " : ""}PAID IN FULL
+                </Btn>
+              </div>
+            )}
           </div>
         </div>
 

@@ -120,6 +120,8 @@ create table public.leads (
   payout numeric,
   travel_zone text check (travel_zone in ('Local', 'Extended Local', 'Regional', 'Central CA')),
   travel_rate numeric,
+  deposit_paid boolean not null default false,
+  paid_in_full boolean not null default false,
   status text not null default 'checking' check (status in ('checking', 'meeting', 'booked', 'played', 'lost')),
   assigned_dj_id uuid references public.users(id),
   honeybook_ref text unique,
@@ -276,7 +278,9 @@ select
   l.meeting_notes,
   l.travel_zone,
   l.travel_rate,
-  l.fiance_name
+  l.fiance_name,
+  case when public.is_owner() then l.deposit_paid else null end as deposit_paid,
+  case when public.is_owner() then l.paid_in_full else null end as paid_in_full
 from public.leads l
 where
   public.is_owner()
