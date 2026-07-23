@@ -125,10 +125,10 @@ create table public.leads (
 
 alter table public.leads enable row level security;
 
--- Only the owner reads/writes the base table directly. DJs read through
--- leads_feed below, which strips client_name/contact/owner_notes and only
--- surfaces rows they're allowed to see. This is column-level hiding, which
--- plain RLS row policies can't express on their own.
+-- DJs never query this table directly (the app only ever reads leads_feed
+-- for them) and this policy blocks them at the row level regardless — so
+-- granting table-level SELECT to authenticated below doesn't expose
+-- anything; RLS is what actually enforces the boundary here.
 create policy "leads_owner_select" on public.leads
   for select using (public.is_owner());
 
@@ -141,7 +141,11 @@ create policy "leads_owner_update" on public.leads
 create policy "leads_owner_delete" on public.leads
   for delete using (public.is_owner());
 
-revoke select on public.leads from authenticated, anon;
+-- Postgres requires SELECT privilege to evaluate a WHERE clause on
+-- UPDATE/DELETE, even when the RLS policy alone would allow it — without
+-- this grant, every owner update/delete on leads fails with "permission
+-- denied for table leads".
+grant select on public.leads to authenticated;
 
 -- ============================================================
 -- availability_responses
