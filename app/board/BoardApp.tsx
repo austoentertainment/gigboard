@@ -19,6 +19,30 @@ type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "availab
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
+const bySubmitted = (a: LeadRow, b: LeadRow) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+function SortToggle({ sortBy, onChange }: { sortBy: "event" | "submitted"; onChange: (v: "event" | "submitted") => void }) {
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>SORT</span>
+      {(["event", "submitted"] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{
+            fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+            padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+            background: sortBy === v ? T.amber : "transparent",
+            color: sortBy === v ? "#1A1502" : T.text,
+            border: `1px solid ${sortBy === v ? T.amber : T.line}`,
+          }}
+        >
+          {v === "event" ? "EVENT DATE" : "SUBMITTED"}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function totalPayout(lead: LeadRow): number {
   return (lead.payout || 0) + (lead.travel_rate || 0);
@@ -689,6 +713,8 @@ export default function BoardApp({
   const [tab, setTab] = useState("pipeline");
   const [toast, setToast] = useState("");
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
+  const [sortBy, setSortBy] = useState<"event" | "submitted">("event");
+  const [motionDjFilter, setMotionDjFilter] = useState<string>("all");
 
   const ping = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 5000); }, []);
 
@@ -818,6 +844,15 @@ export default function BoardApp({
   const inMotion = active.filter((l) => ["meeting", "booked"].includes(leadStatus(l)));
   const archived = leads.filter((l) => ["played", "lost"].includes(leadStatus(l)));
 
+  const filteredMotion = motionDjFilter === "all" ? inMotion : inMotion.filter((l) => l.assigned_dj_id === motionDjFilter);
+  const bookingStats = roster
+    .map((dj) => {
+      const djLeads = leads.filter((l) => l.assigned_dj_id === dj.id);
+      return { dj, count: djLeads.length, total: djLeads.reduce((sum, l) => sum + totalPayout(l), 0) };
+    })
+    .filter((s) => s.count > 0)
+    .sort((a, b) => b.count - a.count);
+
   const tierVisible = (l: LeadRow) => myTiers.length === 0 || !l.dj_tier || myTiers.includes(l.dj_tier);
   const myChecks = checking.filter(tierVisible);
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
@@ -896,19 +931,20 @@ export default function BoardApp({
             )}
             {showAdd === "import" && <ImportForm onSave={addLead} onCancel={() => setShowAdd(false)} ping={ping} companySettings={companySettings} />}
             {showAdd === "manual" && <ManualForm onSave={addLead} onCancel={() => setShowAdd(false)} ping={ping} companySettings={companySettings} />}
+            {checking.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
             {checking.length === 0 && !showAdd && (
               <Empty text="No leads in date check. Import a HoneyBook inquiry and your roster gets pinged for availability." />
             )}
             {checking.filter((l) => leadStatus(l) === "ready").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
-            {checking.filter((l) => leadStatus(l) === "ready").sort(byDate).map((l) => (
+            {checking.filter((l) => leadStatus(l) === "ready").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.amber, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
-            {checking.filter((l) => leadStatus(l) === "checking").sort(byDate).map((l) => (
+            {checking.filter((l) => leadStatus(l) === "checking").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
@@ -916,8 +952,46 @@ export default function BoardApp({
 
         {role === "owner" && activeTab === "motion" && (
           <>
-            {inMotion.length === 0 && <Empty text="Nothing in motion. When a date check comes back green, book the meeting and it moves here." />}
-            {inMotion.sort(byDate).map((l) => (
+            {roster.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[{ id: "all", label: "ALL" }, ...roster.map((d) => ({ id: d.id, label: d.display_name || d.email }))].map((opt) => {
+                  const isActive = motionDjFilter === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setMotionDjFilter(opt.id)}
+                      style={{
+                        fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                        padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+                        background: isActive ? T.amber : "transparent",
+                        color: isActive ? "#1A1502" : T.text,
+                        border: `1px solid ${isActive ? T.amber : T.line}`,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {motionDjFilter === "all" && bookingStats.length > 0 && (
+              <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 8, padding: 14 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.amber, marginBottom: 8 }}>BOOKINGS BY DJ</div>
+                {bookingStats.map(({ dj, count, total }) => (
+                  <div key={dj.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
+                    <span>{dj.display_name || dj.email}</span>
+                    <span style={{ color: T.dim }}>{count} gig{count !== 1 ? "s" : ""}{total ? ` · $${total}` : ""}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {filteredMotion.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
+            {filteredMotion.length === 0 && (
+              <Empty text={motionDjFilter === "all" ? "Nothing in motion. When a date check comes back green, book the meeting and it moves here." : "No meetings or bookings for this DJ yet."} />
+            )}
+            {filteredMotion.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} companySettings={companySettings} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>

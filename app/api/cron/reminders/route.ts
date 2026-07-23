@@ -14,6 +14,14 @@ export async function GET(request: Request) {
   }
 
   const admin = createAdminClient();
+
+  // Auto-archive past events: booked gigs that happened are assumed played;
+  // anything still stuck in checking/meeting once the date's gone is a
+  // missed opportunity, not a played gig.
+  const today = new Date().toISOString().slice(0, 10);
+  await admin.from("leads").update({ status: "played" }).eq("status", "booked").lt("event_date", today);
+  await admin.from("leads").update({ status: "lost" }).in("status", ["checking", "meeting"]).lt("event_date", today);
+
   const cutoff = new Date(Date.now() - REMINDER_AFTER_MS).toISOString();
 
   const { data: staleLeads } = await admin
