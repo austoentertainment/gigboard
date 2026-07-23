@@ -45,5 +45,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // /api routes each do their own auth (session check, shared secret, or
+  // Bearer token for cron) — external callers like Zapier/Vercel Cron can't
+  // follow an HTML redirect anyway, so they must never hit this at all.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
 };
