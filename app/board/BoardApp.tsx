@@ -53,6 +53,27 @@ function AvailChips({ lead, roster, availability }: { lead: LeadRow; roster: Ros
   );
 }
 
+function PayoutEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: string, payout: number | null) => void }) {
+  const [value, setValue] = useState(lead.payout != null ? String(lead.payout) : "");
+  const [dirty, setDirty] = useState(false);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>PAYOUT ($)</span>
+      <Input
+        type="number"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setDirty(true); }}
+        style={{ width: 100 }}
+      />
+      {dirty && (
+        <Btn small kind="primary" onClick={() => { onSave(lead.id, value ? Number(value) : null); setDirty(false); }}>
+          SAVE
+        </Btn>
+      )}
+    </div>
+  );
+}
+
 function MeetingNotesEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: string, notes: string) => void }) {
   const [value, setValue] = useState(lead.meeting_notes || "");
   const [dirty, setDirty] = useState(false);
@@ -131,7 +152,7 @@ function LeadCard({
         </div>
 
         {!djView && (
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim }}>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             {lead.contact && <span>{lead.contact}</span>}
             {lead.source && <span>via {lead.source}</span>}
             {lead.assigned_dj_id && (
@@ -139,6 +160,7 @@ function LeadCard({
                 {roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "assigned"}
               </span></span>
             )}
+            <PayoutEditor lead={lead} onSave={(id, payout) => onUpdateLead(id, { payout }, "Payout updated")} />
           </div>
         )}
 
