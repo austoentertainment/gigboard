@@ -383,6 +383,16 @@ function LeadCard({
               LOST
             </Btn>
           )}
+          {!djView && st === "played" && (
+            <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "booked" }, "Back to booked")}>
+              ↩ BACK TO BOOKED
+            </Btn>
+          )}
+          {!djView && st === "lost" && (
+            <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "checking" }, "Reopened — back to pipeline")}>
+              ↩ REOPEN
+            </Btn>
+          )}
           {!djView && (
             <Btn kind="ghost" small onClick={() => setEditing(true)}>EDIT</Btn>
           )}
