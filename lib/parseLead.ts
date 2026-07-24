@@ -12,8 +12,8 @@ export type ParsedLead = {
 };
 
 const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBook inquiry (email or copied text) for a wedding/event DJ company based in Orange County, California. Respond ONLY with a JSON object, no markdown fences, no preamble, with these keys (use "" when unknown):
-- client: the first named person (e.g. "Jess & Marco" → "Jess"). If only one name is given, use it here and leave fiance "".
-- fiance: the second named person if the inquiry names a couple (e.g. "Jess & Marco" → "Marco"), else ""
+- client: the primary contact / the person who submitted this inquiry (e.g. "Jess & Marco" → "Jess"; if a field is literally labeled "Your Name" or "Contact Name", that person is always the client). Never leave this blank if ANY person's name appears anywhere in the inquiry — even if the only name present is labeled "partner", "fiancé", "fiancée", or similar, put that name here as the client rather than in fiance.
+- fiance: the client's partner, ONLY if the inquiry clearly names two separate people (e.g. "Jess & Marco" → "Marco", or explicit separate "Your Name" / "Partner's Name" fields both filled in). Else "".
 - contact: email or phone if present
 - date: event date as YYYY-MM-DD
 - location: venue and/or city as one line (e.g. "The Colony House, Anaheim")

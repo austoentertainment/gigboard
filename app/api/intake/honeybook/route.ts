@@ -36,10 +36,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, deduped: true, leadId: existing.id });
   }
 
+  // Don't silently drop non-string fields (nested objects/arrays) — a client
+  // name buried in a structured field has caused it to vanish from the blob
+  // before, leaving only a partner/fiance name for Claude to see.
   const raw = Object.entries(body)
-    .filter(([, v]) => typeof v === "string" && v.trim())
-    .map(([k, v]) => `${k}: ${v}`)
+    .map(([k, v]) => {
+      if (v == null) return null;
+      if (typeof v === "string") return v.trim() ? `${k}: ${v}` : null;
+      if (typeof v === "object") return `${k}: ${JSON.stringify(v)}`;
+      return `${k}: ${v}`;
+    })
+    .filter((line): line is string => Boolean(line))
     .join("\n");
+
+  console.log("[honeybook webhook] raw payload:", JSON.stringify(body));
 
   let parsed;
   try {

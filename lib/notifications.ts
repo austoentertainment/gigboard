@@ -43,9 +43,10 @@ export async function notifyDjsOfNewLead(lead: Lead) {
     const tierMatches = !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
     if (!tierMatches) continue;
 
+    const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ");
     await sendEmail({
       to: dj.email,
-      subject: "New date check — can you play this one?",
+      subject: names ? `New date check: ${names} — can you play this one?` : "New date check — can you play this one?",
       html: `
         <p>Hey ${dj.display_name || "there"} — a new date check just dropped.</p>
         ${leadSummaryHtml(lead)}
