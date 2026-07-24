@@ -16,6 +16,7 @@ type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 type CompanySettings = Database["public"]["Tables"]["company_settings"]["Row"];
 type RosterUser = { id: string; email: string; display_name: string | null };
 type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "available" | "pass" };
+type LeaderboardRow = Database["public"]["Views"]["dj_leaderboard"]["Row"];
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
@@ -812,6 +813,7 @@ export default function BoardApp({
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myTiers, setMyTiers] = useState<string[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [tab, setTab] = useState("pipeline");
   const [toast, setToast] = useState("");
@@ -842,6 +844,8 @@ export default function BoardApp({
       setMyAvailability(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.response])));
       const { data: prof } = await supabase.from("dj_profiles").select("dj_tier_visibility").eq("user_id", userId).single();
       setMyTiers(prof?.dj_tier_visibility ?? []);
+      const { data: leaderboardData } = await supabase.from("dj_leaderboard").select("*");
+      setLeaderboard(leaderboardData ?? []);
     }
     setLoading(false);
   }, [supabase, role, userId]);
@@ -965,6 +969,7 @@ export default function BoardApp({
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
+  const rankedLeaderboard = [...leaderboard].sort((a, b) => b.booking_total - a.booking_total);
 
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
@@ -977,6 +982,7 @@ export default function BoardApp({
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
     { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
     { id: "completed", label: "COMPLETED", count: 0 },
+    { id: "leaderboard", label: "LEADERBOARD", count: 0 },
   ];
   const tabs = role === "owner" ? ownerTabs : djTabs;
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
@@ -1144,6 +1150,32 @@ export default function BoardApp({
             {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
+          </>
+        )}
+
+        {role === "dj" && activeTab === "leaderboard" && (
+          <>
+            {rankedLeaderboard.length === 0 && <Empty text="Once DJs start booking gigs, standings show up here." />}
+            {rankedLeaderboard.map((row, i) => {
+              const isMe = row.dj_id === userId;
+              return (
+                <div
+                  key={row.dj_id}
+                  style={{
+                    background: T.surface, border: `1px solid ${isMe ? T.accent : T.line}`, borderRadius: 8,
+                    padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{ fontFamily: "var(--font-heading), serif", fontSize: 16, fontWeight: 900, color: T.dim, width: 24, flexShrink: 0 }}>{i + 1}</div>
+                    <div style={{ fontWeight: 700 }}>{row.display_name || row.email}{isMe && <span style={{ color: T.dim, fontWeight: 400 }}> (you)</span>}</div>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
+                    {row.booking_count} gig{row.booking_count !== 1 ? "s" : ""}{row.booking_total ? ` · $${row.booking_total}` : ""}
+                  </div>
+                </div>
+              );
+            })}
           </>
         )}
       </main>

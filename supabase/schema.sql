@@ -290,6 +290,27 @@ where
 grant select on public.leads_feed to authenticated;
 
 -- ============================================================
+-- dj_leaderboard — aggregate-only, so any DJ can see the team's
+-- standings without exposing anyone's individual leads/clients.
+-- Same count/total semantics as the owner's Roster view (all leads
+-- ever assigned, any status).
+-- ============================================================
+
+create view public.dj_leaderboard as
+select
+  u.id as dj_id,
+  u.display_name,
+  u.email,
+  count(l.id) as booking_count,
+  coalesce(sum(coalesce(l.payout, 0) + coalesce(l.travel_rate, 0)), 0) as booking_total
+from public.users u
+left join public.leads l on l.assigned_dj_id = u.id
+where u.role = 'dj'
+group by u.id, u.display_name, u.email;
+
+grant select on public.dj_leaderboard to authenticated;
+
+-- ============================================================
 -- company_settings (singleton — tier rate table)
 -- ============================================================
 

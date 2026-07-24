@@ -236,6 +236,16 @@ export interface Database {
         };
         Relationships: [];
       };
+      dj_leaderboard: {
+        Row: {
+          dj_id: string;
+          display_name: string | null;
+          email: string;
+          booking_count: number;
+          booking_total: number;
+        };
+        Relationships: [];
+      };
     };
     Functions: Record<string, never>;
   };
