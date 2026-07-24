@@ -1122,7 +1122,8 @@ export default function BoardApp({
               <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
-            {myChecks.sort(byDate).map((l) => (
+            {myChecks.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
+            {myChecks.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
