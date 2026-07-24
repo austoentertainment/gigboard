@@ -259,6 +259,12 @@ function LeadCard({
                 ? [lead.location, totalPayout(lead) ? `$${totalPayout(lead)} payout` : null].filter(Boolean).join(" · ") || "details TBD"
                 : [tier, lead.location].filter(Boolean).join(" · ") || "tier TBD"}
             </div>
+            {djView && (lead.deposit_paid || lead.paid_in_full) && (
+              <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                {lead.deposit_paid && <Tag color={T.green}>DEPOSIT PAID</Tag>}
+                {lead.paid_in_full && <Tag color={T.green}>PAID IN FULL</Tag>}
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
             <div style={{ display: "flex", gap: 6 }}>
@@ -799,7 +805,7 @@ export default function BoardApp({
   const [tab, setTab] = useState("pipeline");
   const [toast, setToast] = useState("");
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
-  const [sortBy, setSortBy] = useState<"event" | "submitted">("event");
+  const [sortBy, setSortBy] = useState<"event" | "submitted">(role === "dj" ? "submitted" : "event");
   const [motionDjFilter, setMotionDjFilter] = useState<string>("all");
 
   const ping = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 5000); }, []);

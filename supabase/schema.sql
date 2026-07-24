@@ -279,8 +279,8 @@ select
   l.travel_zone,
   l.travel_rate,
   l.fiance_name,
-  case when public.is_owner() then l.deposit_paid else null end as deposit_paid,
-  case when public.is_owner() then l.paid_in_full else null end as paid_in_full
+  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.deposit_paid else null end as deposit_paid,
+  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.paid_in_full else null end as paid_in_full
 from public.leads l
 where
   public.is_owner()
