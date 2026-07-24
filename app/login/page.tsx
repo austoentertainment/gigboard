@@ -59,15 +59,14 @@ export default function LoginPage() {
     <div
       style={{
         background: T.bg, minHeight: "100vh", color: T.text, display: "grid", placeItems: "center",
-        fontFamily: "'Archivo', system-ui, -apple-system, sans-serif", padding: 16,
+        fontFamily: "var(--font-body), system-ui, -apple-system, sans-serif", padding: 16,
       }}
     >
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap');`}</style>
       <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
           <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: T.amber, boxShadow: `0 0 8px ${T.amber}` }} />
           <div>
-            <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", textAlign: "center" }}>AUSTO</div>
+            <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", textAlign: "center", fontFamily: "var(--font-heading), serif" }}>AUSTO</div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.34em", color: T.dim, marginTop: -2, textAlign: "center" }}>GIG BOARD</div>
           </div>
         </div>

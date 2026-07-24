@@ -229,9 +229,9 @@ function LeadCard({
     >
       <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 8px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
-        {d.dow && <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2, marginTop: 4 }}>{d.dow.toUpperCase()}</div>}
+        {d.dow && <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
         <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", lineHeight: 1.3 }}>{d.mon}</div>
-        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, fontFamily: "'Archivo', system-ui, sans-serif" }}>{d.day}</div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, fontFamily: "var(--font-heading), serif" }}>{d.day}</div>
         {d.year && <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{"'" + String(d.year).slice(2)}</div>}
       </div>
 
@@ -246,7 +246,7 @@ function LeadCard({
           <>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {djView ? (
                 <>
                   <span>{[lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"}</span>
@@ -930,7 +930,7 @@ export default function BoardApp({
 
   if (loading) {
     return (
-      <div style={{ background: T.bg, minHeight: "100vh", display: "grid", placeItems: "center", color: T.dim, fontFamily: "'Archivo', system-ui, sans-serif" }}>
+      <div style={{ background: T.bg, minHeight: "100vh", display: "grid", placeItems: "center", color: T.dim, fontFamily: "var(--font-body), system-ui, sans-serif" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Lamp color={T.amber} pulse />
           <span style={{ letterSpacing: "0.2em", fontSize: 12, fontWeight: 700 }}>LOADING THE BOARD…</span>
@@ -980,9 +980,8 @@ export default function BoardApp({
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
 
   return (
-    <div style={{ background: T.bg, minHeight: "100vh", color: T.text, fontFamily: "'Archivo', system-ui, -apple-system, sans-serif" }}>
+    <div style={{ background: T.bg, minHeight: "100vh", color: T.text, fontFamily: "var(--font-body), system-ui, -apple-system, sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap');
         @keyframes lampPulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
         .lamp-pulse { animation: lampPulse 1.8s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { .lamp-pulse { animation: none; } }
@@ -997,7 +996,7 @@ export default function BoardApp({
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Lamp color={T.amber} pulse />
               <div>
-                <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", fontStretch: "125%" }}>AUSTO</div>
+                <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", fontFamily: "var(--font-heading), serif" }}>AUSTO</div>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.34em", color: T.dim, marginTop: -2 }}>GIG BOARD</div>
               </div>
             </div>

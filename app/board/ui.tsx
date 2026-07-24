@@ -44,7 +44,7 @@ export const Lamp = ({ color, pulse }: { color: string; pulse?: boolean }) => (
 );
 
 export const Tag = ({ children, color }: { children: React.ReactNode; color: string }) => (
-  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color, border: `1px solid ${color}55`, borderRadius: 3, padding: "2px 6px", whiteSpace: "nowrap" }}>
+  <span style={{ fontFamily: "var(--font-body), system-ui, sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color, border: `1px solid ${color}55`, borderRadius: 3, padding: "2px 6px", whiteSpace: "nowrap" }}>
     {children}
   </span>
 );
