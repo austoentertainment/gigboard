@@ -378,6 +378,11 @@ function LeadCard({
               MARK PLAYED
             </Btn>
           )}
+          {!djView && st === "booked" && (
+            <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "meeting" }, "Back to meeting")}>
+              ↩ BACK TO MEETING
+            </Btn>
+          )}
           {!djView && !["lost", "played"].includes(st) && (
             <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => onUpdateLead(lead.id, { status: "lost" }, "Marked lost")}>
               LOST
