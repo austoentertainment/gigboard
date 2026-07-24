@@ -329,7 +329,8 @@ function LeadCard({
 
         {["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 2, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!djView && lead.needs_review && (
             <Btn kind="green" small onClick={() => onUpdateLead(lead.id, { needs_review: false }, "Reviewed — live on the board")}>
               ✓ APPROVE
@@ -401,9 +402,10 @@ function LeadCard({
           {!djView && (
             <Btn kind="ghost" small onClick={() => setEditing(true)}>EDIT</Btn>
           )}
-          {!djView && (
-            <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => onDeleteLead(lead.id)}>✕</Btn>
-          )}
+        </div>
+        {!djView && (
+          <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44", flexShrink: 0 }} onClick={() => onDeleteLead(lead.id)}>✕</Btn>
+        )}
         </div>
           </>
         )}
