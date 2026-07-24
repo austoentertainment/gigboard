@@ -19,6 +19,7 @@ type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "availab
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
+const isPastEvent = (l: LeadRow) => !!l.event_date && l.event_date < new Date().toISOString().slice(0, 10);
 const bySubmitted = (a: LeadRow, b: LeadRow) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
 function SortToggle({ sortBy, onChange }: { sortBy: "event" | "submitted"; onChange: (v: "event" | "submitted") => void }) {
@@ -214,14 +215,15 @@ function LeadCard({
   const d = fmtDate(lead.event_date);
   const availDjIds = availability.filter((r) => r.lead_id === lead.id && r.response === "available").map((r) => r.dj_user_id);
   const tier = tierStr(lead);
+  const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
 
   return (
     <div
       id={`lead-${lead.id}`}
       style={{
         display: "flex", background: T.surface,
-        border: `1px solid ${highlighted ? T.amber : st === "ready" && !djView ? T.green + "66" : T.line}`,
-        boxShadow: highlighted ? `0 0 0 3px ${T.amber}33` : "none",
+        border: `1px solid ${unpaidPast ? T.red : highlighted ? T.amber : st === "ready" && !djView ? T.green + "66" : T.line}`,
+        boxShadow: highlighted ? `0 0 0 3px ${T.amber}33` : unpaidPast ? `0 0 0 1px ${T.red}` : "none",
         borderRadius: 10, overflow: "hidden",
       }}
     >
@@ -959,6 +961,8 @@ export default function BoardApp({
   const myChecks = checking.filter(tierVisible);
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
+  const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
+  const myCompleted = myGigs.filter((l) => isPastEvent(l));
 
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
@@ -969,7 +973,8 @@ export default function BoardApp({
   ];
   const djTabs = [
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
-    { id: "mine", label: "MY GIGS", count: myGigs.filter((l) => leadStatus(l) === "booked").length },
+    { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
+    { id: "completed", label: "COMPLETED", count: 0 },
   ];
   const tabs = role === "owner" ? ownerTabs : djTabs;
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
@@ -1135,10 +1140,19 @@ export default function BoardApp({
           </>
         )}
 
-        {role === "dj" && activeTab === "mine" && (
+        {role === "dj" && activeTab === "upcoming" && (
           <>
-            {myGigs.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
-            {myGigs.sort(byDate).map((l) => (
+            {myUpcoming.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
+            {myUpcoming.sort(byDate).map((l) => (
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
+          </>
+        )}
+
+        {role === "dj" && activeTab === "completed" && (
+          <>
+            {myCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed and you've been paid in full." />}
+            {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
