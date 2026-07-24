@@ -1170,7 +1170,7 @@ export default function BoardApp({
                     <div style={{ fontFamily: "var(--font-heading), serif", fontSize: 16, fontWeight: 900, color: T.dim, width: 24, flexShrink: 0 }}>{i + 1}</div>
                     <div style={{ fontWeight: 700 }}>{row.display_name || row.email}{isMe && <span style={{ color: T.dim, fontWeight: 400 }}> (you)</span>}</div>
                   </div>
-                  <div style={{ fontSize: 12.5, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: T.text, textAlign: "right", whiteSpace: "nowrap" }}>
                     {row.booking_count} gig{row.booking_count !== 1 ? "s" : ""}{row.booking_total ? ` · $${row.booking_total}` : ""}
                   </div>
                 </div>
