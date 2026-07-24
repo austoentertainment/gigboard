@@ -616,10 +616,11 @@ function generatePassword() {
 }
 
 function Roster({
-  roster, rosterProfiles, onChanged, onSetTiers, ping,
+  roster, rosterProfiles, leads, onChanged, onSetTiers, ping,
 }: {
   roster: RosterUser[];
   rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[] }[];
+  leads: LeadRow[];
   onChanged: () => void;
   onSetTiers: (djId: string, tiers: DjTier[]) => void;
   ping: (m: string) => void;
@@ -675,14 +676,22 @@ function Roster({
       {roster.length === 0 && <Empty text="No DJs yet. Add your Residents and Associates with an email + password, then tell them what it is." />}
       {roster.map((dj) => {
         const tiers = rosterProfiles.find((p) => p.user_id === dj.id)?.dj_tier_visibility ?? [];
+        const djLeads = leads.filter((l) => l.assigned_dj_id === dj.id);
+        const bookingCount = djLeads.length;
+        const bookingTotal = djLeads.reduce((sum, l) => sum + totalPayout(l), 0);
         return (
           <div key={dj.id} style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{dj.display_name || "(pending sign-in)"}</div>
                 <div style={{ fontSize: 12, color: T.dim }}>{dj.email}</div>
               </div>
-              <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => remove(dj.id, dj.display_name || dj.email)}>✕</Btn>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ fontSize: 12, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
+                  {bookingCount} gig{bookingCount !== 1 ? "s" : ""}{bookingTotal ? ` · $${bookingTotal}` : ""}
+                </div>
+                <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => remove(dj.id, dj.display_name || dj.email)}>✕</Btn>
+              </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>TIERS</span>
@@ -945,13 +954,6 @@ export default function BoardApp({
   const archived = leads.filter((l) => ["played", "lost"].includes(leadStatus(l)));
 
   const filteredMotion = motionDjFilter === "all" ? inMotion : inMotion.filter((l) => l.assigned_dj_id === motionDjFilter);
-  const bookingStats = roster
-    .map((dj) => {
-      const djLeads = leads.filter((l) => l.assigned_dj_id === dj.id);
-      return { dj, count: djLeads.length, total: djLeads.reduce((sum, l) => sum + totalPayout(l), 0) };
-    })
-    .filter((s) => s.count > 0)
-    .sort((a, b) => b.count - a.count);
 
   // No dj_tier on the lead means no tier restriction applies. But an empty
   // myTiers means the owner hasn't qualified this DJ for any tier yet — that
@@ -1081,18 +1083,6 @@ export default function BoardApp({
               </div>
             )}
 
-            {motionDjFilter === "all" && bookingStats.length > 0 && (
-              <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 8, padding: 14 }}>
-                <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.accent, marginBottom: 8 }}>BOOKINGS BY DJ</div>
-                {bookingStats.map(({ dj, count, total }) => (
-                  <div key={dj.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
-                    <span>{dj.display_name || dj.email}</span>
-                    <span style={{ color: T.dim }}>{count} gig{count !== 1 ? "s" : ""}{total ? ` · $${total}` : ""}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
             {filteredMotion.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
             {filteredMotion.length === 0 && (
               <Empty text={motionDjFilter === "all" ? "Nothing in motion. When a date check comes back green, book the meeting and it moves here." : "No meetings or bookings for this DJ yet."} />
@@ -1113,7 +1103,7 @@ export default function BoardApp({
         )}
 
         {role === "owner" && activeTab === "roster" && (
-          <Roster roster={roster} rosterProfiles={rosterProfiles} onChanged={loadData} onSetTiers={saveDjTiers} ping={ping} />
+          <Roster roster={roster} rosterProfiles={rosterProfiles} leads={leads} onChanged={loadData} onSetTiers={saveDjTiers} ping={ping} />
         )}
 
         {role === "owner" && activeTab === "settings" && companySettings && (
