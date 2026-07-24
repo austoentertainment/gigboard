@@ -33,9 +33,9 @@ function SortToggle({ sortBy, onChange }: { sortBy: "event" | "submitted"; onCha
           style={{
             fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
             padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-            background: sortBy === v ? T.amber : "transparent",
-            color: sortBy === v ? "#1A1502" : T.text,
-            border: `1px solid ${sortBy === v ? T.amber : T.line}`,
+            background: sortBy === v ? T.teal : "transparent",
+            color: T.text,
+            border: `1px solid ${sortBy === v ? T.teal : T.line}`,
           }}
         >
           {v === "event" ? "EVENT DATE" : "SUBMITTED"}
@@ -165,8 +165,8 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
   return (
-    <div style={{ background: T.raised, border: `1px solid ${T.amber}55`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.amber }}>EDIT LEAD</div>
+    <div style={{ background: T.raised, border: `1px solid ${T.teal}55`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.accent }}>EDIT LEAD</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="CLIENT"><Input value={f.name} onChange={set("name")} /></Field>
         <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} /></Field>
@@ -222,8 +222,8 @@ function LeadCard({
       id={`lead-${lead.id}`}
       style={{
         display: "flex", background: T.surface,
-        border: `1px solid ${unpaidPast ? T.red : highlighted ? T.amber : st === "ready" && !djView ? T.green + "66" : T.line}`,
-        boxShadow: highlighted ? `0 0 0 3px ${T.amber}33` : unpaidPast ? `0 0 0 1px ${T.red}` : "none",
+        border: `1px solid ${unpaidPast ? T.red : highlighted ? T.accent : st === "ready" && !djView ? T.green + "66" : T.line}`,
+        boxShadow: highlighted ? `0 0 0 3px ${T.accent}33` : unpaidPast ? `0 0 0 1px ${T.red}` : "none",
         borderRadius: 10, overflow: "hidden",
       }}
     >
@@ -320,7 +320,7 @@ function LeadCard({
         )}
 
         {lead.upgrades && (
-          <div style={{ fontSize: 12.5, color: T.amber }}>
+          <div style={{ fontSize: 12.5, color: T.accent }}>
             <span style={{ color: T.dim, fontWeight: 700, letterSpacing: "0.1em", fontSize: 10.5 }}>UPGRADES </span>
             {lead.upgrades}
           </div>
@@ -479,8 +479,8 @@ function ImportForm({
   };
 
   return (
-    <div style={{ background: T.raised, border: `1px solid ${T.amber}55`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.amber }}>IMPORT FROM HONEYBOOK</div>
+    <div style={{ background: T.raised, border: `1px solid ${T.teal}55`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.accent }}>IMPORT FROM HONEYBOOK</div>
       <div style={{ fontSize: 12.5, color: T.dim }}>
         Paste the HoneyBook inquiry notification (the email text or the inquiry details) and it&apos;ll be parsed into a lead automatically.
       </div>
@@ -545,7 +545,7 @@ function ManualForm({
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   return (
     <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.amber }}>ADD LEAD MANUALLY</div>
+      <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.accent }}>ADD LEAD MANUALLY</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="CLIENT"><Input value={f.name} onChange={set("name")} placeholder="Jess" /></Field>
         <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} placeholder="Marco" /></Field>
@@ -695,9 +695,9 @@ function Roster({
                     style={{
                       fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
                       padding: "4px 10px", borderRadius: 20, cursor: "pointer",
-                      background: active ? T.amber : "transparent",
-                      color: active ? "#1A1502" : T.dim,
-                      border: `1px solid ${active ? T.amber : T.line}`,
+                      background: active ? T.teal : "transparent",
+                      color: active ? T.text : T.dim,
+                      border: `1px solid ${active ? T.teal : T.line}`,
                     }}
                   >
                     {t}
@@ -740,7 +740,7 @@ function CompanySettings({
         These rates are added together to suggest a DJ payout when you pick tiers on a lead — DJ tier + Production tier.
       </div>
       <div>
-        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.amber, marginBottom: 8 }}>DJ TIER RATES</div>
+        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.accent, marginBottom: 8 }}>DJ TIER RATES</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Field label="HEADLINER ($)"><Input type="number" value={f.headliner_rate} onChange={set("headliner_rate")} /></Field>
           <Field label="RESIDENT ($)"><Input type="number" value={f.resident_rate} onChange={set("resident_rate")} /></Field>
@@ -748,7 +748,7 @@ function CompanySettings({
         </div>
       </div>
       <div>
-        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.amber, marginBottom: 8 }}>PRODUCTION TIER RATES</div>
+        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.accent, marginBottom: 8 }}>PRODUCTION TIER RATES</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Field label="MARQUEE ($)"><Input type="number" value={f.marquee_rate} onChange={set("marquee_rate")} /></Field>
           <Field label="MODERN ($)"><Input type="number" value={f.modern_rate} onChange={set("modern_rate")} /></Field>
@@ -756,7 +756,7 @@ function CompanySettings({
         </div>
       </div>
       <div>
-        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.amber, marginBottom: 8 }}>TRAVEL RATES</div>
+        <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.accent, marginBottom: 8 }}>TRAVEL RATES</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Field label="LOCAL ($)"><Input type="number" value={f.travel_local_rate} onChange={set("travel_local_rate")} /></Field>
           <Field label="EXTENDED LOCAL ($)"><Input type="number" value={f.travel_extended_local_rate} onChange={set("travel_extended_local_rate")} /></Field>
@@ -932,7 +932,7 @@ export default function BoardApp({
     return (
       <div style={{ background: T.bg, minHeight: "100vh", display: "grid", placeItems: "center", color: T.dim, fontFamily: "var(--font-body), system-ui, sans-serif" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Lamp color={T.amber} pulse />
+          <Lamp color={T.accent} pulse />
           <span style={{ letterSpacing: "0.2em", fontSize: 12, fontWeight: 700 }}>LOADING THE BOARD…</span>
         </div>
       </div>
@@ -986,15 +986,15 @@ export default function BoardApp({
         .lamp-pulse { animation: lampPulse 1.8s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { .lamp-pulse { animation: none; } }
         select option { background: ${T.surface}; color: ${T.text}; }
-        input:focus, select:focus, textarea:focus { border-color: ${T.amber} !important; }
-        button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${T.amber}; outline-offset: 2px; }
+        input:focus, select:focus, textarea:focus { border-color: ${T.accent} !important; }
+        button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${T.accent}; outline-offset: 2px; }
       `}</style>
 
       <header style={{ borderBottom: `1px solid ${T.line}`, padding: "16px 16px 0", position: "sticky", top: 0, background: T.bg, zIndex: 10 }}>
         <div style={{ maxWidth: 860, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Lamp color={T.amber} pulse />
+              <Lamp color={T.accent} pulse />
               <div>
                 <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", fontFamily: "var(--font-heading), serif" }}>AUSTO</div>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.34em", color: T.dim, marginTop: -2 }}>GIG BOARD</div>
@@ -1013,12 +1013,12 @@ export default function BoardApp({
               return (
                 <button key={t.id} onClick={() => setTab(t.id)} style={{
                   fontFamily: "inherit", background: "none", border: "none",
-                  borderBottom: `2px solid ${isActive ? T.amber : "transparent"}`,
+                  borderBottom: `2px solid ${isActive ? T.accent : "transparent"}`,
                   color: isActive ? T.text : T.dim, fontWeight: 800, fontSize: 12,
                   letterSpacing: "0.12em", padding: "10px 12px", cursor: "pointer", whiteSpace: "nowrap",
                 }}>
                   {t.label}
-                  {t.count > 0 && <span style={{ marginLeft: 6, color: isActive ? T.amber : T.dim, fontSize: 11 }}>{t.count}</span>}
+                  {t.count > 0 && <span style={{ marginLeft: 6, color: isActive ? T.accent : T.dim, fontSize: 11 }}>{t.count}</span>}
                 </button>
               );
             })}
@@ -1048,7 +1048,7 @@ export default function BoardApp({
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.amber, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "checking").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
@@ -1069,9 +1069,9 @@ export default function BoardApp({
                       style={{
                         fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
                         padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-                        background: isActive ? T.amber : "transparent",
-                        color: isActive ? "#1A1502" : T.text,
-                        border: `1px solid ${isActive ? T.amber : T.line}`,
+                        background: isActive ? T.teal : "transparent",
+                        color: T.text,
+                        border: `1px solid ${isActive ? T.teal : T.line}`,
                       }}
                     >
                       {opt.label}
@@ -1083,7 +1083,7 @@ export default function BoardApp({
 
             {motionDjFilter === "all" && bookingStats.length > 0 && (
               <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 8, padding: 14 }}>
-                <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.amber, marginBottom: 8 }}>BOOKINGS BY DJ</div>
+                <div style={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.1em", color: T.accent, marginBottom: 8 }}>BOOKINGS BY DJ</div>
                 {bookingStats.map(({ dj, count, total }) => (
                   <div key={dj.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
                     <span>{dj.display_name || dj.email}</span>
@@ -1161,7 +1161,7 @@ export default function BoardApp({
       {toast && (
         <div style={{
           position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)",
-          background: T.raised, border: `1px solid ${T.amber}66`, color: T.text,
+          background: T.raised, border: `1px solid ${T.accent}66`, color: T.text,
           padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
           boxShadow: "0 6px 24px rgba(0,0,0,.5)", zIndex: 50,
           maxWidth: "90vw", textAlign: "center",

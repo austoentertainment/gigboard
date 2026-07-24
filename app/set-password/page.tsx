@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const T = {
-  bg: "#14151F",
-  surface: "#1E2030",
-  line: "#32364D",
-  text: "#EEEDE6",
-  dim: "#9AA0B5",
-  amber: "#FFB627",
+  bg: "#0A1B1B",
+  surface: "#0E2827",
+  line: "#184E4A",
+  teal: "#184E4A",
+  text: "#F2EFEA",
+  dim: "#90A7A2",
+  accent: "#F2EFEA",
 };
 
 const inputStyle = {
@@ -42,7 +43,7 @@ export default function SetPasswordPage() {
     <div style={{ background: T.bg, minHeight: "100vh", color: T.text, display: "grid", placeItems: "center", fontFamily: "var(--font-body), system-ui, -apple-system, sans-serif", padding: 16 }}>
       <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
-          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: T.amber, boxShadow: `0 0 8px ${T.amber}` }} />
+          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: T.accent, boxShadow: `0 0 8px ${T.accent}` }} />
           <div>
             <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", textAlign: "center", fontFamily: "var(--font-heading), serif" }}>AUSTO</div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.34em", color: T.dim, marginTop: -2, textAlign: "center" }}>GIG BOARD</div>
@@ -66,7 +67,7 @@ export default function SetPasswordPage() {
               style={{
                 fontFamily: "inherit", fontWeight: 700, letterSpacing: "0.06em", fontSize: 13,
                 padding: "10px 16px", borderRadius: 6, cursor: busy ? "default" : "pointer",
-                background: T.amber, color: "#1A1502", border: `1px solid ${T.amber}`, opacity: busy ? 0.6 : 1,
+                background: T.teal, color: T.text, border: `1px solid ${T.teal}`, opacity: busy ? 0.6 : 1,
               }}
             >
               {busy ? "SAVING…" : "SAVE PASSWORD"}

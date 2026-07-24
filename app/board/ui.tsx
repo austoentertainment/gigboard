@@ -1,11 +1,12 @@
 export const T = {
-  bg: "#14151F",
-  surface: "#1E2030",
-  raised: "#262A3D",
-  line: "#32364D",
-  text: "#EEEDE6",
-  dim: "#9AA0B5",
-  amber: "#FFB627",
+  bg: "#0A1B1B",
+  surface: "#0E2827",
+  raised: "#113532",
+  line: "#184E4A",
+  teal: "#184E4A",
+  text: "#F2EFEA",
+  dim: "#90A7A2",
+  accent: "#F2EFEA",
   green: "#46D97C",
   violet: "#A78BFA",
   blue: "#7C8DB5",
@@ -17,7 +18,7 @@ export const PROD_TIERS = ["Marquee", "Modern", "Essential"] as const;
 export const TRAVEL_ZONES = ["Local", "Extended Local", "Regional", "Central CA"] as const;
 
 export const LEAD_STATUS: Record<string, { label: string; color: string }> = {
-  checking: { label: "DATE CHECK", color: T.amber },
+  checking: { label: "DATE CHECK", color: T.accent },
   ready: { label: "DJ AVAILABLE", color: T.green },
   meeting: { label: "MEETING BOOKED", color: T.violet },
   booked: { label: "BOOKED", color: T.green },
@@ -71,7 +72,7 @@ export const Btn = ({
     border: "1px solid transparent", transition: "filter 120ms",
   };
   const kinds: Record<string, React.CSSProperties> = {
-    primary: { background: T.amber, color: "#1A1502", borderColor: T.amber },
+    primary: { background: T.teal, color: T.text, borderColor: T.teal },
     green: { background: T.green, color: "#06210F", borderColor: T.green },
     danger: { background: "transparent", color: T.red, borderColor: T.red + "66" },
     ghost: { background: "transparent", color: T.dim, borderColor: T.line },
