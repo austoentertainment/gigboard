@@ -34,5 +34,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
+  // New DJs start opted out of notification emails — the owner turns this
+  // on per-DJ from Roster once the board is actually live for them, so
+  // roster/testing setup never emails a real DJ before they're ready.
+  await admin.from("dj_profiles").update({ notify_email: false }).eq("user_id", data.user.id);
+
   return NextResponse.json({ userId: data.user.id });
 }

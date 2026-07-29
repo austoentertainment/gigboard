@@ -694,13 +694,14 @@ function generatePassword() {
 }
 
 function Roster({
-  roster, rosterProfiles, leads, onChanged, onSetTiers, ping, confirm,
+  roster, rosterProfiles, leads, onChanged, onSetTiers, onSetNotify, ping, confirm,
 }: {
   roster: RosterUser[];
-  rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[] }[];
+  rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[]; notify_email: boolean }[];
   leads: LeadRow[];
   onChanged: () => void;
   onSetTiers: (djId: string, tiers: DjTier[]) => void;
+  onSetNotify: (djId: string, enabled: boolean) => void;
   ping: (m: string) => void;
   confirm: (message: string, confirmLabel: string) => Promise<boolean>;
 }) {
@@ -761,7 +762,9 @@ function Roster({
       )}
       {roster.length === 0 && <Empty text="No DJs yet. Add your Residents and Associates with an email + password, then tell them what it is." />}
       {roster.map((dj) => {
-        const tiers = rosterProfiles.find((p) => p.user_id === dj.id)?.dj_tier_visibility ?? [];
+        const profile = rosterProfiles.find((p) => p.user_id === dj.id);
+        const tiers = profile?.dj_tier_visibility ?? [];
+        const notifyEnabled = profile?.notify_email ?? false;
         const djLeads = leads.filter((l) => l.assigned_dj_id === dj.id);
         const bookingCount = djLeads.length;
         const bookingTotal = djLeads.reduce((sum, l) => sum + totalPayout(l), 0);
@@ -800,6 +803,21 @@ function Roster({
                 );
               })}
               {tiers.length === 0 && <span style={{ fontSize: 11, color: T.red }}>not qualified for any tier yet</span>}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>NOTIFICATION EMAILS</span>
+              <button
+                onClick={() => onSetNotify(dj.id, !notifyEnabled)}
+                style={{
+                  fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                  padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                  background: notifyEnabled ? T.green : "transparent",
+                  color: notifyEnabled ? "#06210F" : T.dim,
+                  border: `1px solid ${notifyEnabled ? T.green : T.line}`,
+                }}
+              >
+                {notifyEnabled ? "ON — LIVE FOR THIS DJ" : "OFF — TESTING ONLY"}
+              </button>
             </div>
           </div>
         );
@@ -894,7 +912,7 @@ export default function BoardApp({
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [roster, setRoster] = useState<RosterUser[]>([]);
-  const [rosterProfiles, setRosterProfiles] = useState<{ user_id: string; dj_tier_visibility: DjTier[] }[]>([]);
+  const [rosterProfiles, setRosterProfiles] = useState<{ user_id: string; dj_tier_visibility: DjTier[]; notify_email: boolean }[]>([]);
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myTiers, setMyTiers] = useState<string[]>([]);
@@ -935,7 +953,7 @@ export default function BoardApp({
       setRoster(rosterData ?? []);
       const { data: profilesData } = await supabase
         .from("dj_profiles")
-        .select("user_id, dj_tier_visibility")
+        .select("user_id, dj_tier_visibility, notify_email")
         .in("user_id", (rosterData ?? []).map((d) => d.id).length ? (rosterData ?? []).map((d) => d.id) : ["00000000-0000-0000-0000-000000000000"]);
       setRosterProfiles(profilesData ?? []);
       const { data: availData } = await supabase.from("availability_responses").select("lead_id,dj_user_id,response");
@@ -982,6 +1000,13 @@ export default function BoardApp({
     const { error } = await supabase.from("dj_profiles").update({ dj_tier_visibility: tiers }).eq("user_id", djId);
     if (error) { ping(friendlyError(error)); return; }
     ping("Tiers updated");
+    loadData();
+  };
+
+  const saveDjNotify = async (djId: string, enabled: boolean) => {
+    const { error } = await supabase.from("dj_profiles").update({ notify_email: enabled }).eq("user_id", djId);
+    if (error) { ping(friendlyError(error)); return; }
+    ping(enabled ? "Emails turned on for this DJ" : "Emails turned off for this DJ");
     loadData();
   };
 
@@ -1226,7 +1251,7 @@ export default function BoardApp({
         )}
 
         {role === "owner" && activeTab === "roster" && (
-          <Roster roster={roster} rosterProfiles={rosterProfiles} leads={leads} onChanged={loadData} onSetTiers={saveDjTiers} ping={ping} confirm={confirmAction} />
+          <Roster roster={roster} rosterProfiles={rosterProfiles} leads={leads} onChanged={loadData} onSetTiers={saveDjTiers} onSetNotify={saveDjNotify} ping={ping} confirm={confirmAction} />
         )}
 
         {role === "owner" && activeTab === "settings" && companySettings && (
