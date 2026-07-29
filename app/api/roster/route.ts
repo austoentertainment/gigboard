@@ -43,7 +43,10 @@ export async function POST(request: Request) {
   // self-signup path a musician could pick their own role through, so
   // promote it here instead.
   if (isMusician) {
-    await admin.from("users").update({ role: "musician" }).eq("id", data.user.id);
+    const { error: roleError } = await admin.from("users").update({ role: "musician" }).eq("id", data.user.id);
+    if (roleError) {
+      return NextResponse.json({ error: `Account created, but couldn't set the musician role: ${roleError.message}` }, { status: 500 });
+    }
   }
 
   // New roster members start opted out of notification emails — the owner
@@ -54,10 +57,13 @@ export async function POST(request: Request) {
   // Musicians aren't gated by DJ tier anywhere today (they're matched to a
   // lead by instrument, not tier), but they're qualified for every tier by
   // default so nothing blocks them if a tier check ever does apply to them.
-  await admin.from("dj_profiles").update({
+  const { error: profileError } = await admin.from("dj_profiles").update({
     notify_email: false,
     ...(isMusician ? { instrument: instrument as Instrument, dj_tier_visibility: ["Headliner", "Resident", "Associate"] } : {}),
   }).eq("user_id", data.user.id);
+  if (profileError) {
+    return NextResponse.json({ error: `Account created, but couldn't finish setting it up: ${profileError.message}` }, { status: 500 });
+  }
 
   return NextResponse.json({ userId: data.user.id });
 }

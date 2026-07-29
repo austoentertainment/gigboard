@@ -77,13 +77,19 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Only the owner may change a role — otherwise a DJ could self-promote via a raw update call.
+-- Only the owner may change a role — otherwise a DJ could self-promote via a
+-- raw update call. auth.role() = 'service_role' is also allowed through:
+-- that's never reachable from the browser (only our own server-side API
+-- routes hold the service-role key), and /api/roster already checks
+-- requireOwner() before it ever promotes a new account to 'musician' — a
+-- service-role request has no auth.uid() at all, so without this the
+-- promotion silently fails is_owner() and the account is stuck as 'dj'.
 create function public.prevent_role_escalation()
 returns trigger
 language plpgsql
 as $$
 begin
-  if new.role <> old.role and not public.is_owner() then
+  if new.role <> old.role and not public.is_owner() and auth.role() <> 'service_role' then
     raise exception 'only the owner can change roles';
   end if;
   return new;
