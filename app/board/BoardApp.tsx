@@ -7,7 +7,7 @@ import type { Database, DjTier, ProdTier, TravelZone } from "@/lib/supabase/type
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import {
   T, DJ_TIERS, LEAD_STATUS, fmtDate,
-  Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker,
+  Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
 } from "./ui";
 
 type LeadRow = Database["public"]["Views"]["leads_feed"]["Row"];
@@ -17,6 +17,7 @@ type CompanySettings = Database["public"]["Tables"]["company_settings"]["Row"];
 type RosterUser = { id: string; email: string; display_name: string | null };
 type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "available" | "pass" };
 type LeaderboardRow = Database["public"]["Views"]["dj_leaderboard"]["Row"];
+type EventRow = Database["public"]["Tables"]["events"]["Row"];
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
@@ -149,6 +150,65 @@ function MeetingNotesEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: stri
   );
 }
 
+function describeEvent(e: EventRow, actorLabel: string): string {
+  const detail = (e.detail || {}) as Record<string, unknown>;
+  if (e.event_type === "status_change") {
+    return `${actorLabel} moved this from ${String(detail.from ?? "?")} to ${String(detail.to ?? "?")}`;
+  }
+  if (e.event_type === "availability_response") {
+    return `${actorLabel} marked themselves ${String(detail.response ?? "?")}`;
+  }
+  return `${actorLabel}: ${e.event_type}`;
+}
+
+function LeadHistory({
+  leadId, roster, userId, onFetch,
+}: {
+  leadId: string;
+  roster: RosterUser[];
+  userId: string;
+  onFetch: (leadId: string) => Promise<EventRow[]>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [events, setEvents] = useState<EventRow[] | null>(null);
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (events === null) {
+      setLoading(true);
+      const data = await onFetch(leadId);
+      setEvents(data);
+      setLoading(false);
+    }
+  };
+
+  const actorName = (actorId: string | null) => {
+    if (!actorId) return "Automatically";
+    if (actorId === userId) return "You";
+    return roster.find((d) => d.id === actorId)?.display_name || "A DJ";
+  };
+
+  return (
+    <div>
+      <Btn kind="ghost" small onClick={toggle}>{open ? "HIDE HISTORY" : "HISTORY"}</Btn>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          {loading && <div style={{ fontSize: 12, color: T.dim }}>Loading…</div>}
+          {!loading && events?.length === 0 && <div style={{ fontSize: 12, color: T.dim }}>No activity logged yet.</div>}
+          {!loading && events?.map((e) => (
+            <div key={e.id} style={{ fontSize: 12, color: T.dim, display: "flex", gap: 8, justifyContent: "space-between" }}>
+              <span>{describeEvent(e, actorName(e.actor_user_id))}</span>
+              <span style={{ flexShrink: 0, color: T.dim }}>{new Date(e.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patch: LeadUpdate) => void; onCancel: () => void }) {
   const [f, setF] = useState({
     name: lead.client_name || "",
@@ -168,6 +228,7 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
   return (
     <div style={{ background: T.raised, border: `1px solid ${T.teal}55`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.accent }}>EDIT LEAD</div>
+      <SectionLabel>CLIENT</SectionLabel>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="CLIENT"><Input value={f.name} onChange={set("name")} /></Field>
         <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} /></Field>
@@ -176,10 +237,12 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
         <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} /></Field>
         <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
       </div>
+      <SectionLabel>EVENT</SectionLabel>
       <Field label="LOCATION"><Input value={f.location} onChange={set("location")} /></Field>
       <TierPicker djTier={f.djTier} prodTier={f.prodTier} onChange={({ djTier, prodTier }) => setF({ ...f, djTier, prodTier })} />
       <Field label="UPGRADES"><Input value={f.upgrades} onChange={set("upgrades")} /></Field>
       <Field label="CLIENT VISION"><TextArea value={f.vision} onChange={set("vision")} /></Field>
+      <SectionLabel>NOTES</SectionLabel>
       <Field label="PRIVATE NOTES (OWNER ONLY)"><TextArea value={f.notes} onChange={set("notes")} /></Field>
       <Field label="NOTES FOR DJs (SHOWN ON DATE CHECK)"><TextArea value={f.djNotes} onChange={set("djNotes")} /></Field>
       <div style={{ fontSize: 11.5, color: T.dim }}>Payout, travel, and deposit status are edited directly on the card, not here.</div>
@@ -196,7 +259,7 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
 }
 
 function LeadCard({
-  lead, djView, roster, availability, myAnswer, highlighted,
+  lead, djView, roster, availability, myAnswer, highlighted, busy, userId, onFetchHistory,
   onSetAvail, onUpdateLead, onDeleteLead, onSaveNotes,
 }: {
   lead: LeadRow;
@@ -205,6 +268,9 @@ function LeadCard({
   availability: AvailabilityRow[];
   myAnswer?: "available" | "pass";
   highlighted?: boolean;
+  busy?: boolean;
+  userId: string;
+  onFetchHistory: (leadId: string) => Promise<EventRow[]>;
   onSetAvail: (leadId: string, answer: "available" | "pass") => void;
   onUpdateLead: (id: string, patch: LeadUpdate, msg?: string) => void;
   onDeleteLead: (id: string) => void;
@@ -272,10 +338,11 @@ function LeadCard({
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
             <div style={{ display: "flex", gap: 6 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
+              {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
               <Tag color={s.color}>{s.label}</Tag>
             </div>
             {!djView && ["meeting", "booked", "played"].includes(st) && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
                 <Btn
                   kind={lead.deposit_paid ? "green" : "ghost"}
                   small
@@ -338,7 +405,9 @@ function LeadCard({
 
         {["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 2, alignItems: "center", justifyContent: "space-between" }}>
+        {!djView && <LeadHistory leadId={lead.id} roster={roster} userId={userId} onFetch={onFetchHistory} />}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 2, alignItems: "center", justifyContent: "space-between", opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto", transition: "opacity 120ms" }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!djView && lead.needs_review && (
             <Btn kind="green" small onClick={() => onUpdateLead(lead.id, { needs_review: false }, "Reviewed — live on the board")}>
@@ -413,7 +482,7 @@ function LeadCard({
           )}
         </div>
         {!djView && (
-          <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44", flexShrink: 0 }} onClick={() => onDeleteLead(lead.id)}>✕</Btn>
+          <Btn kind="danger" small style={{ flexShrink: 0 }} onClick={() => onDeleteLead(lead.id)}>DELETE</Btn>
         )}
         </div>
           </>
@@ -494,17 +563,20 @@ function ImportForm({
       ) : (
         <>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", color: T.green }}>CHECK IT BEFORE IT GOES LIVE</div>
+          <SectionLabel>CLIENT</SectionLabel>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Field label="CLIENT"><Input value={parsed.name} onChange={(e) => setParsed({ ...parsed, name: e.target.value })} /></Field>
             <Field label="FIANCÉ / PARTNER"><Input value={parsed.fianceName} onChange={(e) => setParsed({ ...parsed, fianceName: e.target.value })} /></Field>
             <Field label="EVENT DATE"><Input type="date" value={parsed.date} onChange={(e) => setParsed({ ...parsed, date: e.target.value })} /></Field>
           </div>
+          <SectionLabel>EVENT</SectionLabel>
           <Field label="LOCATION"><Input value={parsed.location} onChange={(e) => setParsed({ ...parsed, location: e.target.value })} placeholder="The Colony House, Anaheim" /></Field>
           <TierPicker djTier={parsed.djTier} prodTier={parsed.prodTier} onChange={({ djTier, prodTier }) => {
             const next = { ...parsed, djTier, prodTier };
             if (!parsed.payout && djTier && prodTier) next.payout = String(tierRate(companySettings, djTier, prodTier));
             setParsed(next);
           }} />
+          <SectionLabel>PRICING</SectionLabel>
           <Field label="DJ PAYOUT ($) — SHOWN TO DJs">
             <div style={{ display: "flex", gap: 6 }}>
               <Input type="number" value={parsed.payout} onChange={(e) => setParsed({ ...parsed, payout: e.target.value })} style={{ flex: 1 }} />
@@ -518,6 +590,7 @@ function ImportForm({
           <Field label="TRAVEL FEE ($) — ESTIMATED FROM LOCATION">
             <Input type="number" value={parsed.travelRate} onChange={(e) => setParsed({ ...parsed, travelRate: e.target.value })} />
           </Field>
+          <SectionLabel>DETAILS</SectionLabel>
           <Field label="UPGRADES"><Input value={parsed.upgrades} onChange={(e) => setParsed({ ...parsed, upgrades: e.target.value })} placeholder="Guac Booth, CO2, cold sparks…" /></Field>
           <Field label="CLIENT VISION"><TextArea value={parsed.vision} onChange={(e) => setParsed({ ...parsed, vision: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 8 }}>
@@ -547,12 +620,14 @@ function ManualForm({
   return (
     <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontWeight: 800, letterSpacing: "0.1em", fontSize: 12, color: T.accent }}>ADD LEAD MANUALLY</div>
+      <SectionLabel>CLIENT</SectionLabel>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="CLIENT"><Input value={f.name} onChange={set("name")} placeholder="Jess" /></Field>
         <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} placeholder="Marco" /></Field>
         <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} placeholder="email or phone" /></Field>
         <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
       </div>
+      <SectionLabel>EVENT</SectionLabel>
       <Field label="LOCATION">
         <Input
           value={f.location}
@@ -575,6 +650,7 @@ function ManualForm({
       }} />
       <Field label="UPGRADES"><Input value={f.upgrades} onChange={set("upgrades")} placeholder="Guac Booth, CO2, uplighting…" /></Field>
       <Field label="CLIENT VISION"><TextArea value={f.vision} onChange={set("vision")} /></Field>
+      <SectionLabel>PRICING</SectionLabel>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="SOURCE"><Input value={f.source} onChange={set("source")} placeholder="HoneyBook / IG / referral" /></Field>
         <Field label="DJ PAYOUT ($) — SHOWN TO DJs">
@@ -591,6 +667,7 @@ function ManualForm({
           <Input type="number" value={f.travelRate} onChange={set("travelRate")} />
         </Field>
       </div>
+      <SectionLabel>NOTES</SectionLabel>
       <Field label="PRIVATE NOTES (OWNER ONLY)"><TextArea value={f.notes} onChange={set("notes")} /></Field>
       <Field label="NOTES FOR DJs (SHOWN ON DATE CHECK)"><TextArea value={f.djNotes} onChange={set("djNotes")} placeholder="Outdoor ceremony, load-in 3pm…" /></Field>
       <div style={{ display: "flex", gap: 8 }}>
@@ -617,7 +694,7 @@ function generatePassword() {
 }
 
 function Roster({
-  roster, rosterProfiles, leads, onChanged, onSetTiers, ping,
+  roster, rosterProfiles, leads, onChanged, onSetTiers, ping, confirm,
 }: {
   roster: RosterUser[];
   rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[] }[];
@@ -625,6 +702,7 @@ function Roster({
   onChanged: () => void;
   onSetTiers: (djId: string, tiers: DjTier[]) => void;
   ping: (m: string) => void;
+  confirm: (message: string, confirmLabel: string) => Promise<boolean>;
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -649,7 +727,8 @@ function Roster({
   };
 
   const remove = async (id: string, label: string) => {
-    if (!window.confirm(`Remove ${label}?`)) return;
+    const ok = await confirm(`Remove ${label} from the roster? This can't be undone.`, "Remove DJ");
+    if (!ok) return;
     const res = await fetch(`/api/roster/${id}`, { method: "DELETE" });
     if (!res.ok) { ping("Couldn't remove — check connection and retry"); return; }
     ping("Removed");
@@ -668,8 +747,14 @@ function Roster({
       {created && (
         <div style={{ background: T.raised, border: `1px solid ${T.green}66`, borderRadius: 8, padding: 14, fontSize: 13 }}>
           <div style={{ fontWeight: 800, color: T.green, marginBottom: 6 }}>ACCOUNT CREATED — TELL {(created.name || created.email).toUpperCase()}</div>
-          <div>Email: <strong>{created.email}</strong></div>
-          <div>Password: <strong>{created.password}</strong></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>Email: <strong>{created.email}</strong></span>
+            <Btn small ariaLabel="Copy email" onClick={() => { navigator.clipboard.writeText(created.email); ping("Email copied"); }}>COPY</Btn>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <span>Password: <strong>{created.password}</strong></span>
+            <Btn small ariaLabel="Copy password" onClick={() => { navigator.clipboard.writeText(created.password); ping("Password copied"); }}>COPY</Btn>
+          </div>
           <div style={{ color: T.dim, marginTop: 6, fontSize: 12 }}>Copy this down now — it won&apos;t be shown again here.</div>
           <Btn small style={{ marginTop: 8 }} onClick={() => setCreated(null)}>DISMISS</Btn>
         </div>
@@ -691,7 +776,7 @@ function Roster({
                 <div style={{ fontSize: 12, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
                   {bookingCount} gig{bookingCount !== 1 ? "s" : ""}{bookingTotal ? ` · $${bookingTotal}` : ""}
                 </div>
-                <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => remove(dj.id, dj.display_name || dj.email)}>✕</Btn>
+                <Btn kind="danger" small onClick={() => remove(dj.id, dj.display_name || dj.email)}>REMOVE</Btn>
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -816,12 +901,30 @@ export default function BoardApp({
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [tab, setTab] = useState("pipeline");
-  const [toast, setToast] = useState("");
+  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
   const [sortBy, setSortBy] = useState<"event" | "submitted">(role === "dj" ? "submitted" : "event");
   const [motionDjFilter, setMotionDjFilter] = useState<string>("all");
+  const [confirmState, setConfirmState] = useState<{ message: string; confirmLabel: string; resolve: (v: boolean) => void } | null>(null);
+  const [busyLeadId, setBusyLeadId] = useState<string | null>(null);
 
-  const ping = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 5000); }, []);
+  const ping = useCallback((m: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message: m }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }, []);
+
+  const confirmAction = useCallback((message: string, confirmLabel: string) => {
+    return new Promise<boolean>((resolve) => setConfirmState({ message, confirmLabel, resolve }));
+  }, []);
+
+  // Supabase/Postgres error text (constraint names, column names) isn't
+  // meaningful to a non-technical user — log it for us, show them plain
+  // language instead.
+  const friendlyError = useCallback((error: { message: string }) => {
+    console.error(error.message);
+    return "Something went wrong — try again.";
+  }, []);
 
   const loadData = useCallback(async () => {
     const { data: leadsData } = await supabase.from("leads_feed").select("*").order("created_at", { ascending: false });
@@ -870,19 +973,26 @@ export default function BoardApp({
     router.push("/login");
   };
 
+  const fetchLeadHistory = useCallback(async (leadId: string): Promise<EventRow[]> => {
+    const { data } = await supabase.from("events").select("*").eq("lead_id", leadId).order("created_at", { ascending: false });
+    return data ?? [];
+  }, [supabase]);
+
   const saveDjTiers = async (djId: string, tiers: DjTier[]) => {
     const { error } = await supabase.from("dj_profiles").update({ dj_tier_visibility: tiers }).eq("user_id", djId);
-    if (error) { ping(`Couldn't save: ${error.message}`); return; }
+    if (error) { ping(friendlyError(error)); return; }
     ping("Tiers updated");
     loadData();
   };
 
   const setAvail = async (leadId: string, answer: "available" | "pass") => {
     setMyAvailability((prev) => ({ ...prev, [leadId]: answer }));
+    setBusyLeadId(leadId);
     const { error } = await supabase
       .from("availability_responses")
       .upsert({ lead_id: leadId, dj_user_id: userId, response: answer }, { onConflict: "lead_id,dj_user_id" });
-    if (error) { ping(`Couldn't save: ${error.message}`); return; }
+    setBusyLeadId(null);
+    if (error) { ping(friendlyError(error)); return; }
     ping(answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date");
     loadData();
     if (answer === "available") {
@@ -895,26 +1005,33 @@ export default function BoardApp({
   };
 
   const updateLead = async (id: string, patch: LeadUpdate, msg?: string) => {
+    setBusyLeadId(id);
     const { error } = await supabase.from("leads").update(patch).eq("id", id);
-    if (error) { ping(`Couldn't save: ${error.message}`); return; }
+    setBusyLeadId(null);
+    if (error) { ping(friendlyError(error)); return; }
     if (msg) ping(msg);
     loadData();
   };
 
   const deleteLead = async (id: string) => {
-    if (!window.confirm("Delete this lead entirely?")) return;
+    const ok = await confirmAction("Delete this lead entirely? This can't be undone.", "Delete lead");
+    if (!ok) return;
+    setBusyLeadId(id);
     const { error } = await supabase.from("leads").delete().eq("id", id);
-    if (error) { ping(`Couldn't delete: ${error.message}`); return; }
+    setBusyLeadId(null);
+    if (error) { ping(friendlyError(error)); return; }
     ping("Lead deleted");
     loadData();
   };
 
   const saveNotes = async (id: string, notes: string) => {
+    setBusyLeadId(id);
     const res = await fetch(`/api/leads/${id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notes }),
     });
+    setBusyLeadId(null);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { ping(data.error || "Couldn't save notes"); return; }
     ping("Notes saved");
@@ -923,14 +1040,14 @@ export default function BoardApp({
 
   const saveSettings = async (patch: Database["public"]["Tables"]["company_settings"]["Update"]) => {
     const { error } = await supabase.from("company_settings").update(patch).eq("id", 1);
-    if (error) { ping(`Couldn't save: ${error.message}`); return; }
+    if (error) { ping(friendlyError(error)); return; }
     ping("Rates updated");
     loadData();
   };
 
   const addLead = async (fields: LeadInsert) => {
     const { data, error } = await supabase.from("leads").insert(fields).select("id").single();
-    if (error) { ping(`Couldn't save: ${error.message}`); return; }
+    if (error) { ping(friendlyError(error)); return; }
     ping("Lead is on the board — date check is live");
     setShowAdd(false);
     loadData();
@@ -1010,7 +1127,7 @@ export default function BoardApp({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: T.dim }}>{displayName} · {role === "owner" ? "Owner" : "DJ"}</span>
-              <Btn small onClick={() => { loadData(); ping("Board refreshed"); }}>↻</Btn>
+              <Btn small ariaLabel="Refresh board" onClick={() => { loadData(); ping("Board refreshed"); }}>↻</Btn>
               <Btn small onClick={logout}>LOG OUT</Btn>
             </div>
           </div>
@@ -1053,13 +1170,13 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "ready").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "checking").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1094,7 +1211,7 @@ export default function BoardApp({
               <Empty text={motionDjFilter === "all" ? "Nothing in motion. When a date check comes back green, book the meeting and it moves here." : "No meetings or bookings for this DJ yet."} />
             )}
             {filteredMotion.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1103,13 +1220,13 @@ export default function BoardApp({
           <>
             {archived.length === 0 && <Empty text="Played and lost leads end up here." />}
             {archived.map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
 
         {role === "owner" && activeTab === "roster" && (
-          <Roster roster={roster} rosterProfiles={rosterProfiles} leads={leads} onChanged={loadData} onSetTiers={saveDjTiers} ping={ping} />
+          <Roster roster={roster} rosterProfiles={rosterProfiles} leads={leads} onChanged={loadData} onSetTiers={saveDjTiers} ping={ping} confirm={confirmAction} />
         )}
 
         {role === "owner" && activeTab === "settings" && companySettings && (
@@ -1130,7 +1247,7 @@ export default function BoardApp({
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
             {myChecks.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
             {myChecks.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1139,7 +1256,7 @@ export default function BoardApp({
           <>
             {myUpcoming.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myUpcoming.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1148,7 +1265,7 @@ export default function BoardApp({
           <>
             {myCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed and you've been paid in full." />}
             {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1180,15 +1297,49 @@ export default function BoardApp({
         )}
       </main>
 
-      {toast && (
+      {toasts.length > 0 && (
         <div style={{
           position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)",
-          background: T.raised, border: `1px solid ${T.accent}66`, color: T.text,
-          padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
-          boxShadow: "0 6px 24px rgba(0,0,0,.5)", zIndex: 50,
-          maxWidth: "90vw", textAlign: "center",
+          display: "flex", flexDirection: "column", gap: 8, alignItems: "center", zIndex: 50,
         }}>
-          {toast}
+          {toasts.map((t) => (
+            <div key={t.id} style={{
+              background: T.raised, border: `1px solid ${T.accent}66`, color: T.text,
+              padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+              boxShadow: "0 6px 24px rgba(0,0,0,.5)",
+              maxWidth: "90vw", textAlign: "center",
+            }}>
+              {t.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirmState && (
+        <div
+          role="presentation"
+          onClick={() => { confirmState.resolve(false); setConfirmState(null); }}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,.6)",
+            display: "grid", placeItems: "center", zIndex: 60, padding: 16,
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
+              padding: 20, maxWidth: 360, width: "100%", display: "flex", flexDirection: "column", gap: 16,
+              boxShadow: "0 12px 40px rgba(0,0,0,.5)",
+            }}
+          >
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>{confirmState.message}</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn kind="ghost" small onClick={() => { confirmState.resolve(false); setConfirmState(null); }}>CANCEL</Btn>
+              <Btn kind="danger" small onClick={() => { confirmState.resolve(true); setConfirmState(null); }}>{confirmState.confirmLabel.toUpperCase()}</Btn>
+            </div>
+          </div>
         </div>
       )}
     </div>

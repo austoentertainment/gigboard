@@ -55,11 +55,11 @@ export default function SetPasswordPage() {
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>NEW PASSWORD</span>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" style={inputStyle} />
+              <input type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" style={inputStyle} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>CONFIRM PASSWORD</span>
-              <input type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type it again" style={inputStyle} />
+              <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type it again" style={inputStyle} />
             </label>
             <button
               type="submit"

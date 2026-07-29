@@ -57,6 +57,7 @@ export const Btn = ({
   small,
   disabled,
   style,
+  ariaLabel,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -64,6 +65,7 @@ export const Btn = ({
   small?: boolean;
   disabled?: boolean;
   style?: React.CSSProperties;
+  ariaLabel?: string;
 }) => {
   const base: React.CSSProperties = {
     fontFamily: "inherit", fontWeight: 700, letterSpacing: "0.06em",
@@ -74,12 +76,13 @@ export const Btn = ({
   const kinds: Record<string, React.CSSProperties> = {
     primary: { background: T.teal, color: T.text, borderColor: T.teal },
     green: { background: T.green, color: "#06210F", borderColor: T.green },
-    danger: { background: "transparent", color: T.red, borderColor: T.red + "66" },
+    danger: { background: T.red, color: "#360007", borderColor: T.red },
     ghost: { background: "transparent", color: T.dim, borderColor: T.line },
   };
   return (
     <button
       onClick={disabled ? undefined : onClick}
+      aria-label={ariaLabel}
       style={{ ...base, ...kinds[kind], ...style }}
       onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.15)")}
       onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
@@ -104,6 +107,12 @@ export const Input = (p: React.InputHTMLAttributes<HTMLInputElement>) => <input 
 export const Select = (p: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...p} style={{ ...inputStyle, ...p.style }} />;
 export const TextArea = (p: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea {...p} style={{ ...inputStyle, minHeight: 60, resize: "vertical", ...p.style }} />
+);
+
+export const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.16em", color: T.dim, marginTop: 4 }}>
+    {children}
+  </div>
 );
 
 export const Empty = ({ text }: { text: string }) => (
