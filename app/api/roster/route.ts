@@ -50,9 +50,13 @@ export async function POST(request: Request) {
   // turns this on per-person from Roster once the board is actually live
   // for them, so roster/testing setup never emails someone before they're
   // ready.
+  //
+  // Musicians aren't gated by DJ tier anywhere today (they're matched to a
+  // lead by instrument, not tier), but they're qualified for every tier by
+  // default so nothing blocks them if a tier check ever does apply to them.
   await admin.from("dj_profiles").update({
     notify_email: false,
-    ...(isMusician ? { instrument: instrument as Instrument } : {}),
+    ...(isMusician ? { instrument: instrument as Instrument, dj_tier_visibility: ["Headliner", "Resident", "Associate"] } : {}),
   }).eq("user_id", data.user.id);
 
   return NextResponse.json({ userId: data.user.id });
