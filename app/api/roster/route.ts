@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Instrument } from "@/lib/supabase/types";
 
 async function requireOwner() {
   const supabase = await createClient();
@@ -14,12 +15,16 @@ export async function POST(request: Request) {
   const owner = await requireOwner();
   if (!owner) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { email, displayName, password } = await request.json();
+  const { email, displayName, password, role, instrument } = await request.json();
   if (!email || typeof email !== "string") {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
   if (!password || typeof password !== "string" || password.length < 8) {
     return NextResponse.json({ error: "password must be at least 8 characters" }, { status: 400 });
+  }
+  const isMusician = role === "musician";
+  if (isMusician && !["Saxophone", "Violin"].includes(instrument)) {
+    return NextResponse.json({ error: "instrument is required for a musician" }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -34,10 +39,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  // New DJs start opted out of notification emails — the owner turns this
-  // on per-DJ from Roster once the board is actually live for them, so
-  // roster/testing setup never emails a real DJ before they're ready.
-  await admin.from("dj_profiles").update({ notify_email: false }).eq("user_id", data.user.id);
+  // The signup trigger always creates the account as 'dj' — there's no
+  // self-signup path a musician could pick their own role through, so
+  // promote it here instead.
+  if (isMusician) {
+    await admin.from("users").update({ role: "musician" }).eq("id", data.user.id);
+  }
+
+  // New roster members start opted out of notification emails — the owner
+  // turns this on per-person from Roster once the board is actually live
+  // for them, so roster/testing setup never emails someone before they're
+  // ready.
+  await admin.from("dj_profiles").update({
+    notify_email: false,
+    ...(isMusician ? { instrument: instrument as Instrument } : {}),
+  }).eq("user_id", data.user.id);
 
   return NextResponse.json({ userId: data.user.id });
 }

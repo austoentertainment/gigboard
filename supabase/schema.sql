@@ -9,7 +9,7 @@ create table public.users (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
   display_name text,
-  role text not null default 'dj' check (role in ('owner', 'dj')),
+  role text not null default 'dj' check (role in ('owner', 'dj', 'musician')),
   created_at timestamptz not null default now()
 );
 
@@ -25,8 +25,35 @@ as $$
   );
 $$;
 
+create function public.is_dj()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.users where id = auth.uid() and role = 'dj'
+  );
+$$;
+
+create function public.is_musician()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.users where id = auth.uid() and role = 'musician'
+  );
+$$;
+
 -- New Supabase Auth signups get a matching public.users + dj_profiles row.
--- austin@djausto.com is bootstrapped straight to 'owner'; everyone else starts as 'dj'.
+-- austin@djausto.com is bootstrapped straight to 'owner'; everyone else starts
+-- as 'dj' — the /api/roster route immediately promotes a new account to
+-- 'musician' right after creation when the owner adds one, since there's no
+-- self-signup path a musician could pick their own role through.
 create function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -79,9 +106,13 @@ create policy "users_update" on public.users
 -- dj_profiles
 -- ============================================================
 
+-- Despite the name, this table now holds the roster profile for both DJs
+-- and musicians (instrument only applies to musicians) — reusing it avoids
+-- a second per-user profile table and a second insert trigger branch.
 create table public.dj_profiles (
   user_id uuid primary key references public.users(id) on delete cascade,
   dj_tier_visibility text[] not null default '{}',
+  instrument text check (instrument in ('Saxophone', 'Violin')),
   notify_email boolean not null default true,
   notify_sms boolean not null default false,
   phone text
@@ -152,6 +183,35 @@ create policy "leads_owner_delete" on public.leads
 -- this grant, every owner update/delete on leads fails with "permission
 -- denied for table leads".
 grant select on public.leads to authenticated;
+
+-- ============================================================
+-- lead_musicians — a lead can book zero, one, or both musicians
+-- (e.g. a saxophonist for cocktail hour AND a violinist for the
+-- ceremony), each with their own services and payout. Row-level
+-- granularity means a musician's own row can just be read directly —
+-- no extra privacy view needed, since they can never see another
+-- musician's row.
+-- ============================================================
+
+create table public.lead_musicians (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid not null references public.leads(id) on delete cascade,
+  musician_id uuid not null references public.users(id) on delete cascade,
+  services text[] not null default '{}',
+  payout numeric,
+  created_at timestamptz not null default now(),
+  unique (lead_id, musician_id)
+);
+
+alter table public.lead_musicians enable row level security;
+
+create policy "lead_musicians_owner_all" on public.lead_musicians
+  for all using (public.is_owner()) with check (public.is_owner());
+
+create policy "lead_musicians_musician_select" on public.lead_musicians
+  for select using (musician_id = auth.uid());
+
+grant select on public.lead_musicians to authenticated;
 
 -- ============================================================
 -- availability_responses
@@ -284,8 +344,12 @@ select
 from public.leads l
 where
   public.is_owner()
-  or l.status = 'checking'
-  or (l.assigned_dj_id = auth.uid() and l.status in ('booked', 'played'));
+  or (l.status = 'checking' and public.is_dj())
+  or (l.assigned_dj_id = auth.uid() and l.status in ('booked', 'played'))
+  or exists (
+    select 1 from public.lead_musicians lm
+    where lm.lead_id = l.id and lm.musician_id = auth.uid()
+  );
 
 grant select on public.leads_feed to authenticated;
 

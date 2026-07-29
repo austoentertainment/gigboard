@@ -19,7 +19,7 @@ const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBoo
 - location: venue and/or city as one line (e.g. "The Colony House, Anaheim")
 - djTier: one of Headliner, Resident, Associate — only if the inquiry names a DJ tier or package that clearly maps to one
 - prodTier: one of Marquee, Modern, Essential — only if the inquiry names a production tier/package that clearly maps to one
-- upgrades: comma-separated add-ons mentioned (photo booth / Guac Booth, CO2, cold sparks, uplighting, custom lighting, ceremony audio, etc.)
+- upgrades: comma-separated add-ons mentioned (photo booth / Guac Booth, CO2, cold sparks, uplighting, custom lighting, ceremony audio, etc.) — if the client asks for a live saxophonist or violinist for any part of the event, include the literal word "Saxophone" or "Violin" here so it can be matched later
 - vision: 1-3 sentences capturing what the client says they want the event to feel like, in their words where possible
 - travelZone: one of Local, Extended Local, Regional, Central CA, based on the event location's distance from Orange County — use your knowledge of California geography to classify it, even if the exact city isn't in these examples:
   - Local: Greater Orange County, San Clemente, Fullerton, Long Beach

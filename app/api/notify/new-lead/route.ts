@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { notifyDjsOfNewLead } from "@/lib/notifications";
+import { notifyDjsOfNewLead, notifyMusiciansOfNewLead } from "@/lib/notifications";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -18,5 +18,6 @@ export async function POST(request: Request) {
   if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
   await notifyDjsOfNewLead(lead);
+  await notifyMusiciansOfNewLead(lead);
   return NextResponse.json({ ok: true });
 }

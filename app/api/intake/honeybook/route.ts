@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseLeadWithClaude, LeadParseError } from "@/lib/parseLead";
-import { notifyDjsOfNewLead } from "@/lib/notifications";
+import { notifyDjsOfNewLead, notifyMusiciansOfNewLead } from "@/lib/notifications";
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import type { DjTier, ProdTier, TravelZone } from "@/lib/supabase/types";
 
@@ -93,6 +93,7 @@ export async function POST(request: Request) {
   }
 
   await notifyDjsOfNewLead(lead);
+  await notifyMusiciansOfNewLead(lead);
 
   return NextResponse.json({ ok: true, leadId: lead.id });
 }

@@ -16,6 +16,8 @@ export const T = {
 export const DJ_TIERS = ["Headliner", "Resident", "Associate"] as const;
 export const PROD_TIERS = ["Marquee", "Modern", "Essential"] as const;
 export const TRAVEL_ZONES = ["Local", "Extended Local", "Regional", "Central CA"] as const;
+export const MUSICIAN_INSTRUMENTS = ["Saxophone", "Violin"] as const;
+export const MUSICIAN_SERVICES = ["Ceremony", "Cocktail Hour", "Dinner", "Formalities", "2 Hours of Dancing"] as const;
 
 export const LEAD_STATUS: Record<string, { label: string; color: string }> = {
   checking: { label: "DATE CHECK", color: T.accent },

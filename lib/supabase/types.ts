@@ -4,7 +4,9 @@ export type ProdTier = "Marquee" | "Modern" | "Essential";
 export type TravelZone = "Local" | "Extended Local" | "Regional" | "Central CA";
 export type LeadSource = "honeybook" | "manual";
 export type AvailabilityAnswer = "available" | "pass";
-export type UserRole = "owner" | "dj";
+export type UserRole = "owner" | "dj" | "musician";
+export type Instrument = "Saxophone" | "Violin";
+export type MusicianService = "Ceremony" | "Cocktail Hour" | "Dinner" | "Formalities" | "2 Hours of Dancing";
 
 export interface Database {
   public: {
@@ -33,6 +35,7 @@ export interface Database {
         Row: {
           user_id: string;
           dj_tier_visibility: DjTier[];
+          instrument: Instrument | null;
           notify_email: boolean;
           notify_sms: boolean;
           phone: string | null;
@@ -40,15 +43,38 @@ export interface Database {
         Insert: {
           user_id: string;
           dj_tier_visibility?: DjTier[];
+          instrument?: Instrument | null;
           notify_email?: boolean;
           notify_sms?: boolean;
           phone?: string | null;
         };
         Update: {
           dj_tier_visibility?: DjTier[];
+          instrument?: Instrument | null;
           notify_email?: boolean;
           notify_sms?: boolean;
           phone?: string | null;
+        };
+        Relationships: [];
+      };
+      lead_musicians: {
+        Row: {
+          id: string;
+          lead_id: string;
+          musician_id: string;
+          services: MusicianService[];
+          payout: number | null;
+          created_at: string;
+        };
+        Insert: {
+          lead_id: string;
+          musician_id: string;
+          services?: MusicianService[];
+          payout?: number | null;
+        };
+        Update: {
+          services?: MusicianService[];
+          payout?: number | null;
         };
         Relationships: [];
       };

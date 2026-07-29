@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Database, DjTier, ProdTier, TravelZone } from "@/lib/supabase/types";
+import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService } from "@/lib/supabase/types";
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import {
   T, DJ_TIERS, LEAD_STATUS, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
+  MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES,
 } from "./ui";
 
 type LeadRow = Database["public"]["Views"]["leads_feed"]["Row"];
@@ -18,6 +19,7 @@ type RosterUser = { id: string; email: string; display_name: string | null };
 type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "available" | "pass" };
 type LeaderboardRow = Database["public"]["Views"]["dj_leaderboard"]["Row"];
 type EventRow = Database["public"]["Tables"]["events"]["Row"];
+type LeadMusicianRow = Database["public"]["Tables"]["lead_musicians"]["Row"];
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
@@ -209,6 +211,95 @@ function LeadHistory({
   );
 }
 
+function MusicianBookingRow({
+  musician, instrument, booking, onUnbook, onUpdate,
+}: {
+  musician: RosterUser;
+  instrument: Instrument | null | undefined;
+  booking: LeadMusicianRow;
+  onUnbook: (id: string, label: string) => void;
+  onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => void;
+}) {
+  const [payout, setPayout] = useState(booking.payout != null ? String(booking.payout) : "");
+  const [dirty, setDirty] = useState(false);
+  const services = booking.services || [];
+
+  return (
+    <div style={{ background: T.raised, border: `1px solid ${T.line}`, borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          {musician.display_name || musician.email}
+          {instrument && <Tag color={T.blue}>{instrument}</Tag>}
+        </div>
+        <Btn kind="danger" small onClick={() => onUnbook(booking.id, musician.display_name || musician.email)}>REMOVE</Btn>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {MUSICIAN_SERVICES.map((s) => {
+          const active = services.includes(s);
+          return (
+            <button
+              key={s}
+              onClick={() => onUpdate(booking.id, { services: active ? services.filter((x) => x !== s) : [...services, s] })}
+              style={{
+                fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                background: active ? T.teal : "transparent",
+                color: active ? T.text : T.dim,
+                border: `1px solid ${active ? T.teal : T.line}`,
+              }}
+            >
+              {s}
+            </button>
+          );
+        })}
+        {services.length === 0 && <span style={{ fontSize: 11, color: T.red }}>no services picked yet</span>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>PAYOUT ($) — PRIVATE TO THIS MUSICIAN</span>
+        <Input type="number" value={payout} onChange={(e) => { setPayout(e.target.value); setDirty(true); }} style={{ width: 100 }} />
+        {dirty && (
+          <Btn small kind="primary" onClick={() => { onUpdate(booking.id, { payout: payout ? Number(payout) : null }, "Payout updated"); setDirty(false); }}>
+            SAVE
+          </Btn>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MusicianBooking({
+  leadId, musicianRoster, rosterProfiles, bookings, onBook, onUnbook, onUpdate,
+}: {
+  leadId: string;
+  musicianRoster: RosterUser[];
+  rosterProfiles: { user_id: string; instrument: Instrument | null }[];
+  bookings: LeadMusicianRow[];
+  onBook: (leadId: string, musicianId: string) => void;
+  onUnbook: (id: string, label: string) => void;
+  onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => void;
+}) {
+  if (musicianRoster.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>MUSICIANS</span>
+      {musicianRoster.map((m) => {
+        const instrument = rosterProfiles.find((p) => p.user_id === m.id)?.instrument;
+        const booking = bookings.find((b) => b.musician_id === m.id);
+        if (!booking) {
+          return (
+            <Btn key={m.id} kind="ghost" small style={{ alignSelf: "flex-start" }} onClick={() => onBook(leadId, m.id)}>
+              + BOOK {m.display_name || m.email}{instrument ? ` (${instrument})` : ""}
+            </Btn>
+          );
+        }
+        return (
+          <MusicianBookingRow key={m.id} musician={m} instrument={instrument} booking={booking} onUnbook={onUnbook} onUpdate={onUpdate} />
+        );
+      })}
+    </div>
+  );
+}
+
 function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patch: LeadUpdate) => void; onCancel: () => void }) {
   const [f, setF] = useState({
     name: lead.client_name || "",
@@ -260,6 +351,7 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
 
 function LeadCard({
   lead, djView, roster, availability, myAnswer, highlighted, busy, userId, onFetchHistory,
+  musicianRoster, rosterProfiles, leadMusicians, onBookMusician, onUnbookMusician, onUpdateMusicianBooking,
   onSetAvail, onUpdateLead, onDeleteLead, onSaveNotes,
 }: {
   lead: LeadRow;
@@ -271,6 +363,12 @@ function LeadCard({
   busy?: boolean;
   userId: string;
   onFetchHistory: (leadId: string) => Promise<EventRow[]>;
+  musicianRoster: RosterUser[];
+  rosterProfiles: { user_id: string; instrument: Instrument | null }[];
+  leadMusicians: LeadMusicianRow[];
+  onBookMusician: (leadId: string, musicianId: string) => void;
+  onUnbookMusician: (id: string, label: string) => void;
+  onUpdateMusicianBooking: (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => void;
   onSetAvail: (leadId: string, answer: "available" | "pass") => void;
   onUpdateLead: (id: string, patch: LeadUpdate, msg?: string) => void;
   onDeleteLead: (id: string) => void;
@@ -404,6 +502,18 @@ function LeadCard({
         {!djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} availability={availability} />}
 
         {["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
+
+        {!djView && ["meeting", "booked", "played"].includes(st) && (
+          <MusicianBooking
+            leadId={lead.id}
+            musicianRoster={musicianRoster}
+            rosterProfiles={rosterProfiles}
+            bookings={leadMusicians.filter((lm) => lm.lead_id === lead.id)}
+            onBook={onBookMusician}
+            onUnbook={onUnbookMusician}
+            onUpdate={onUpdateMusicianBooking}
+          />
+        )}
 
         {!djView && <LeadHistory leadId={lead.id} roster={roster} userId={userId} onFetch={onFetchHistory} />}
 
@@ -694,17 +804,21 @@ function generatePassword() {
 }
 
 function Roster({
-  roster, rosterProfiles, leads, onChanged, onSetTiers, onSetNotify, ping, confirm,
+  roster, musicianRoster, rosterProfiles, leads, leadMusicians, onChanged, onSetTiers, onSetNotify, ping, confirm,
 }: {
   roster: RosterUser[];
-  rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[]; notify_email: boolean }[];
+  musicianRoster: RosterUser[];
+  rosterProfiles: { user_id: string; dj_tier_visibility: DjTier[]; instrument: Instrument | null; notify_email: boolean }[];
   leads: LeadRow[];
+  leadMusicians: LeadMusicianRow[];
   onChanged: () => void;
   onSetTiers: (djId: string, tiers: DjTier[]) => void;
   onSetNotify: (djId: string, enabled: boolean) => void;
   ping: (m: string) => void;
   confirm: (message: string, confirmLabel: string) => Promise<boolean>;
 }) {
+  const [newRole, setNewRole] = useState<"dj" | "musician">("dj");
+  const [instrument, setInstrument] = useState<Instrument | "">("");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -713,22 +827,23 @@ function Roster({
 
   const create = async () => {
     if (!email.trim() || password.length < 8) return;
+    if (newRole === "musician" && !instrument) { ping("Pick an instrument for this musician"); return; }
     setBusy(true);
     const res = await fetch("/api/roster", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), displayName: name.trim() || null, password }),
+      body: JSON.stringify({ email: email.trim(), displayName: name.trim() || null, password, role: newRole, instrument: newRole === "musician" ? instrument : undefined }),
     });
     const data = await res.json();
     setBusy(false);
     if (!res.ok) { ping(data.error || "Couldn't create that account"); return; }
     setCreated({ email: email.trim(), password, name: name.trim() });
-    setEmail(""); setName(""); setPassword("");
+    setEmail(""); setName(""); setPassword(""); setInstrument("");
     onChanged();
   };
 
   const remove = async (id: string, label: string) => {
-    const ok = await confirm(`Remove ${label} from the roster? This can't be undone.`, "Remove DJ");
+    const ok = await confirm(`Remove ${label} from the roster? This can't be undone.`, "Remove");
     if (!ok) return;
     const res = await fetch(`/api/roster/${id}`, { method: "DELETE" });
     if (!res.ok) { ping("Couldn't remove — check connection and retry"); return; }
@@ -738,12 +853,35 @@ function Roster({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 6 }}>
+        {(["dj", "musician"] as const).map((r) => (
+          <button
+            key={r}
+            onClick={() => { setNewRole(r); setInstrument(""); }}
+            style={{
+              fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+              padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+              background: newRole === r ? T.teal : "transparent",
+              color: T.text,
+              border: `1px solid ${newRole === r ? T.teal : T.line}`,
+            }}
+          >
+            {r === "dj" ? "DJ" : "MUSICIAN"}
+          </button>
+        ))}
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="DJ name (e.g., DJ Marcus)" style={{ flex: 1, minWidth: 160 }} />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={newRole === "dj" ? "DJ name (e.g., DJ Marcus)" : "Musician name"} style={{ flex: 1, minWidth: 160 }} />
         <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" type="email" style={{ flex: 1, minWidth: 200 }} />
         <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (8+ chars)" style={{ flex: 1, minWidth: 160 }} />
+        {newRole === "musician" && (
+          <Select value={instrument} onChange={(e) => setInstrument(e.target.value as Instrument)} style={{ flex: 1, minWidth: 160 }}>
+            <option value="">Pick instrument…</option>
+            {MUSICIAN_INSTRUMENTS.map((i) => <option key={i} value={i}>{i}</option>)}
+          </Select>
+        )}
         <Btn onClick={() => setPassword(generatePassword())}>GENERATE</Btn>
-        <Btn kind="primary" onClick={create} disabled={busy}>{busy ? "ADDING…" : "ADD DJ"}</Btn>
+        <Btn kind="primary" onClick={create} disabled={busy}>{busy ? "ADDING…" : newRole === "dj" ? "ADD DJ" : "ADD MUSICIAN"}</Btn>
       </div>
       {created && (
         <div style={{ background: T.raised, border: `1px solid ${T.green}66`, borderRadius: 8, padding: 14, fontSize: 13 }}>
@@ -760,6 +898,7 @@ function Roster({
           <Btn small style={{ marginTop: 8 }} onClick={() => setCreated(null)}>DISMISS</Btn>
         </div>
       )}
+      <SectionLabel>DJS</SectionLabel>
       {roster.length === 0 && <Empty text="No DJs yet. Add your Residents and Associates with an email + password, then tell them what it is." />}
       {roster.map((dj) => {
         const profile = rosterProfiles.find((p) => p.user_id === dj.id);
@@ -822,6 +961,87 @@ function Roster({
           </div>
         );
       })}
+
+      <SectionLabel>MUSICIANS</SectionLabel>
+      {musicianRoster.length === 0 && <Empty text="No musicians yet. Add your Saxophonist and Violinist with an email + password, then tell them what it is." />}
+      {musicianRoster.map((m) => {
+        const profile = rosterProfiles.find((p) => p.user_id === m.id);
+        const notifyEnabled = profile?.notify_email ?? false;
+        const bookings = leadMusicians.filter((lm) => lm.musician_id === m.id);
+        const bookingCount = bookings.length;
+        const bookingTotal = bookings.reduce((sum, lm) => sum + (lm.payout || 0), 0);
+        return (
+          <div key={m.id} style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                  {m.display_name || "(pending sign-in)"}
+                  {profile?.instrument && <Tag color={T.blue}>{profile.instrument}</Tag>}
+                </div>
+                <div style={{ fontSize: 12, color: T.dim }}>{m.email}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ fontSize: 12, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
+                  {bookingCount} gig{bookingCount !== 1 ? "s" : ""}{bookingTotal ? ` · $${bookingTotal}` : ""}
+                </div>
+                <Btn kind="danger" small onClick={() => remove(m.id, m.display_name || m.email)}>REMOVE</Btn>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>NOTIFICATION EMAILS</span>
+              <button
+                onClick={() => onSetNotify(m.id, !notifyEnabled)}
+                style={{
+                  fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                  padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                  background: notifyEnabled ? T.green : "transparent",
+                  color: notifyEnabled ? "#06210F" : T.dim,
+                  border: `1px solid ${notifyEnabled ? T.green : T.line}`,
+                }}
+              >
+                {notifyEnabled ? "ON — LIVE FOR THIS MUSICIAN" : "OFF — TESTING ONLY"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MusicianLeadCard({ lead, booking, highlighted }: { lead: LeadRow; booking: LeadMusicianRow; highlighted?: boolean }) {
+  const d = fmtDate(lead.event_date);
+  const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead";
+  const services = booking.services || [];
+  return (
+    <div
+      id={`lead-${lead.id}`}
+      style={{
+        display: "flex", background: T.surface,
+        border: `1px solid ${highlighted ? T.accent : T.line}`,
+        boxShadow: highlighted ? `0 0 0 3px ${T.accent}33` : "none",
+        borderRadius: 10, overflow: "hidden",
+      }}
+    >
+      <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 8px", flexShrink: 0 }}>
+        {d.dow && <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
+        <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", lineHeight: 1.3 }}>{d.mon}</div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, fontFamily: "var(--font-heading), serif" }}>{d.day}</div>
+        {d.year && <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{"'" + String(d.year).slice(2)}</div>}
+      </div>
+      <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
+        <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {services.map((s) => <Tag key={s} color={T.blue}>{s}</Tag>)}
+          {services.length === 0 && <span style={{ fontSize: 11, color: T.red }}>services not set yet — check with Austin</span>}
+        </div>
+        <div style={{ fontSize: 12.5 }}>
+          {booking.payout != null
+            ? <>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></>
+            : <span style={{ color: T.dim }}>Payout not set yet</span>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -902,7 +1122,7 @@ export default function BoardApp({
 }: {
   userId: string;
   displayName: string;
-  role: "owner" | "dj";
+  role: "owner" | "dj" | "musician";
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -912,7 +1132,10 @@ export default function BoardApp({
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [roster, setRoster] = useState<RosterUser[]>([]);
-  const [rosterProfiles, setRosterProfiles] = useState<{ user_id: string; dj_tier_visibility: DjTier[]; notify_email: boolean }[]>([]);
+  const [musicianRoster, setMusicianRoster] = useState<RosterUser[]>([]);
+  const [rosterProfiles, setRosterProfiles] = useState<{ user_id: string; dj_tier_visibility: DjTier[]; instrument: Instrument | null; notify_email: boolean }[]>([]);
+  const [leadMusicians, setLeadMusicians] = useState<LeadMusicianRow[]>([]);
+  const [myMusicianBookings, setMyMusicianBookings] = useState<LeadMusicianRow[]>([]);
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myTiers, setMyTiers] = useState<string[]>([]);
@@ -951,22 +1174,30 @@ export default function BoardApp({
     if (role === "owner") {
       const { data: rosterData } = await supabase.from("users").select("id,email,display_name").eq("role", "dj").order("display_name");
       setRoster(rosterData ?? []);
+      const { data: musicianData } = await supabase.from("users").select("id,email,display_name").eq("role", "musician").order("display_name");
+      setMusicianRoster(musicianData ?? []);
+      const allRosterIds = [...(rosterData ?? []), ...(musicianData ?? [])].map((d) => d.id);
       const { data: profilesData } = await supabase
         .from("dj_profiles")
-        .select("user_id, dj_tier_visibility, notify_email")
-        .in("user_id", (rosterData ?? []).map((d) => d.id).length ? (rosterData ?? []).map((d) => d.id) : ["00000000-0000-0000-0000-000000000000"]);
+        .select("user_id, dj_tier_visibility, instrument, notify_email")
+        .in("user_id", allRosterIds.length ? allRosterIds : ["00000000-0000-0000-0000-000000000000"]);
       setRosterProfiles(profilesData ?? []);
       const { data: availData } = await supabase.from("availability_responses").select("lead_id,dj_user_id,response");
       setAvailability(availData ?? []);
+      const { data: leadMusiciansData } = await supabase.from("lead_musicians").select("*");
+      setLeadMusicians(leadMusiciansData ?? []);
       const { data: settingsData } = await supabase.from("company_settings").select("*").eq("id", 1).single();
       setCompanySettings(settingsData ?? null);
-    } else {
+    } else if (role === "dj") {
       const { data: mine } = await supabase.from("availability_responses").select("lead_id,response").eq("dj_user_id", userId);
       setMyAvailability(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.response])));
       const { data: prof } = await supabase.from("dj_profiles").select("dj_tier_visibility").eq("user_id", userId).single();
       setMyTiers(prof?.dj_tier_visibility ?? []);
       const { data: leaderboardData } = await supabase.from("dj_leaderboard").select("*");
       setLeaderboard(leaderboardData ?? []);
+    } else {
+      const { data: myBookings } = await supabase.from("lead_musicians").select("*").eq("musician_id", userId);
+      setMyMusicianBookings(myBookings ?? []);
     }
     setLoading(false);
   }, [supabase, role, userId]);
@@ -1007,6 +1238,29 @@ export default function BoardApp({
     const { error } = await supabase.from("dj_profiles").update({ notify_email: enabled }).eq("user_id", djId);
     if (error) { ping(friendlyError(error)); return; }
     ping(enabled ? "Emails turned on for this DJ" : "Emails turned off for this DJ");
+    loadData();
+  };
+
+  const bookMusician = async (leadId: string, musicianId: string) => {
+    const { error } = await supabase.from("lead_musicians").insert({ lead_id: leadId, musician_id: musicianId });
+    if (error) { ping(friendlyError(error)); return; }
+    ping("Musician booked on this lead");
+    loadData();
+  };
+
+  const unbookMusician = async (id: string, label: string) => {
+    const ok = await confirmAction(`Remove ${label} from this lead?`, "Remove");
+    if (!ok) return;
+    const { error } = await supabase.from("lead_musicians").delete().eq("id", id);
+    if (error) { ping(friendlyError(error)); return; }
+    ping("Musician removed from this lead");
+    loadData();
+  };
+
+  const updateMusicianBooking = async (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => {
+    const { error } = await supabase.from("lead_musicians").update(patch).eq("id", id);
+    if (error) { ping(friendlyError(error)); return; }
+    if (msg) ping(msg);
     loadData();
   };
 
@@ -1113,6 +1367,11 @@ export default function BoardApp({
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
   const rankedLeaderboard = [...leaderboard].sort((a, b) => b.booking_total - a.booking_total);
 
+  const myMusicianLeadIds = new Set(myMusicianBookings.map((b) => b.lead_id));
+  const myMusicianLeads = leads.filter((l) => myMusicianLeadIds.has(l.id));
+  const myMusicianUpcoming = myMusicianLeads.filter((l) => !isPastEvent(l));
+  const myMusicianCompleted = myMusicianLeads.filter((l) => isPastEvent(l));
+
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
     { id: "motion", label: "MEETINGS & BOOKED", count: inMotion.length },
@@ -1126,7 +1385,11 @@ export default function BoardApp({
     { id: "completed", label: "COMPLETED", count: 0 },
     { id: "leaderboard", label: "LEADERBOARD", count: 0 },
   ];
-  const tabs = role === "owner" ? ownerTabs : djTabs;
+  const musicianTabs = [
+    { id: "musician-upcoming", label: "UPCOMING", count: myMusicianUpcoming.length },
+    { id: "musician-completed", label: "COMPLETED", count: 0 },
+  ];
+  const tabs = role === "owner" ? ownerTabs : role === "dj" ? djTabs : musicianTabs;
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
 
   return (
@@ -1151,7 +1414,7 @@ export default function BoardApp({
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: T.dim }}>{displayName} · {role === "owner" ? "Owner" : "DJ"}</span>
+              <span style={{ fontSize: 12, color: T.dim }}>{displayName} · {role === "owner" ? "Owner" : role === "dj" ? "DJ" : "Musician"}</span>
               <Btn small ariaLabel="Refresh board" onClick={() => { loadData(); ping("Board refreshed"); }}>↻</Btn>
               <Btn small onClick={logout}>LOG OUT</Btn>
             </div>
@@ -1195,13 +1458,13 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "ready").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {checking.filter((l) => leadStatus(l) === "checking").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1236,7 +1499,7 @@ export default function BoardApp({
               <Empty text={motionDjFilter === "all" ? "Nothing in motion. When a date check comes back green, book the meeting and it moves here." : "No meetings or bookings for this DJ yet."} />
             )}
             {filteredMotion.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1245,13 +1508,13 @@ export default function BoardApp({
           <>
             {archived.length === 0 && <Empty text="Played and lost leads end up here." />}
             {archived.map((l) => (
-              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
 
         {role === "owner" && activeTab === "roster" && (
-          <Roster roster={roster} rosterProfiles={rosterProfiles} leads={leads} onChanged={loadData} onSetTiers={saveDjTiers} onSetNotify={saveDjNotify} ping={ping} confirm={confirmAction} />
+          <Roster roster={roster} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leads={leads} leadMusicians={leadMusicians} onChanged={loadData} onSetTiers={saveDjTiers} onSetNotify={saveDjNotify} ping={ping} confirm={confirmAction} />
         )}
 
         {role === "owner" && activeTab === "settings" && companySettings && (
@@ -1272,7 +1535,7 @@ export default function BoardApp({
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
             {myChecks.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
             {myChecks.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1281,7 +1544,7 @@ export default function BoardApp({
           <>
             {myUpcoming.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myUpcoming.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1290,7 +1553,7 @@ export default function BoardApp({
           <>
             {myCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed and you've been paid in full." />}
             {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -1317,6 +1580,26 @@ export default function BoardApp({
                   </div>
                 </div>
               );
+            })}
+          </>
+        )}
+
+        {role === "musician" && activeTab === "musician-upcoming" && (
+          <>
+            {myMusicianUpcoming.length === 0 && <Empty text="No gigs booked yet — Austin will add you to a lead once a client books live music." />}
+            {myMusicianUpcoming.sort(byDate).map((l) => {
+              const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
+              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
+            })}
+          </>
+        )}
+
+        {role === "musician" && activeTab === "musician-completed" && (
+          <>
+            {myMusicianCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed." />}
+            {myMusicianCompleted.sort((a, b) => byDate(b, a)).map((l) => {
+              const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
+              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
             })}
           </>
         )}
