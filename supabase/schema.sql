@@ -160,7 +160,7 @@ create table public.leads (
   deposit_paid boolean not null default false,
   paid_in_full boolean not null default false,
   status text not null default 'checking' check (status in ('checking', 'meeting', 'booked', 'played', 'lost')),
-  assigned_dj_id uuid references public.users(id),
+  assigned_dj_id uuid references public.users(id) on delete set null,
   honeybook_ref text unique,
   needs_review boolean not null default false,
   created_at timestamptz not null default now()
@@ -253,7 +253,7 @@ create policy "availability_delete" on public.availability_responses
 create table public.events (
   id uuid primary key default gen_random_uuid(),
   lead_id uuid references public.leads(id) on delete cascade,
-  actor_user_id uuid references public.users(id),
+  actor_user_id uuid references public.users(id) on delete set null,
   event_type text not null,
   detail jsonb,
   created_at timestamptz not null default now()

@@ -846,7 +846,8 @@ function Roster({
     const ok = await confirm(`Remove ${label} from the roster? This can't be undone.`, "Remove");
     if (!ok) return;
     const res = await fetch(`/api/roster/${id}`, { method: "DELETE" });
-    if (!res.ok) { ping("Couldn't remove — check connection and retry"); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { ping(data.error || "Couldn't remove — try again"); return; }
     ping("Removed");
     onChanged();
   };
