@@ -72,9 +72,16 @@ export async function parseLeadWithClaude(raw: string): Promise<ParsedLead> {
 
   try {
     const obj = JSON.parse(clean);
+    let name = obj.client || "";
+    let fiance = obj.fiance || "";
+    // Belt-and-suspenders: whichever name is the only one present always
+    // ends up as the client, regardless of which field the model put it
+    // in — this is the field every display and email actually shows first,
+    // so a single name must never end up stranded in "fiance" alone.
+    if (!name && fiance) { name = fiance; fiance = ""; }
     return {
-      name: obj.client || "",
-      fiance: obj.fiance || "",
+      name,
+      fiance,
       contact: obj.contact || "",
       date: obj.date || "",
       location: obj.location || "",
