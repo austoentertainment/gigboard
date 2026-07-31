@@ -416,20 +416,20 @@ function LeadCard({
           style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap", cursor: "pointer" }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {djView ? (
-                <>
-                  <span>{[lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"}</span>
-                  {lead.client_name && tier && <Tag color={T.blue}>{tier}</Tag>}
-                </>
-              ) : (
-                [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"
-              )}
+            <div style={{ fontWeight: 800, fontSize: 30, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
+              {djView
+                ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
+                : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
             </div>
-            <div style={{ fontSize: 12.5, color: T.dim, marginTop: 2 }}>
+            {tier && (
+              <div style={{ fontWeight: 700, fontSize: 24, fontFamily: "var(--font-heading), serif", color: T.blue, lineHeight: 1.2, marginTop: 2 }}>
+                {tier}
+              </div>
+            )}
+            <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>
               {djView
                 ? [lead.location, totalPayout(lead) ? `$${totalPayout(lead)} payout` : null].filter(Boolean).join(" · ") || "details TBD"
-                : [tier, lead.location, totalPayout(lead) ? `$${totalPayout(lead)}` : null].filter(Boolean).join(" · ") || "tier TBD"}
+                : [lead.location, totalPayout(lead) ? `$${totalPayout(lead)}` : null].filter(Boolean).join(" · ") || "details TBD"}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
