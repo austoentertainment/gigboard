@@ -429,11 +429,11 @@ function LeadCard({
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18, padding: "14px 12px", flexShrink: 0 }}>
+      <div className="lead-date-strip" style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18, padding: "14px 12px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-          {d.dow && <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.dow.toUpperCase()}</div>}
-          <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.mon} {d.day}</div>
+          {d.dow && <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.dow.toUpperCase()}</div>}
+          <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.mon} {d.day}</div>
           {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2, textAlign: "center" }}>{d.year}</div>}
         </div>
       </div>
@@ -452,13 +452,13 @@ function LeadCard({
           style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap", cursor: "pointer" }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
+            <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
               {djView
                 ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
                 : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
             </div>
             {(lead.dj_tier || lead.prod_tier) && (
-              <div style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
+              <div className="lead-tier" style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
                 {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
                 {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
                 {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
@@ -1100,9 +1100,9 @@ function MusicianLeadCard({ lead, booking, highlighted }: { lead: LeadRow; booki
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 10px", flexShrink: 0 }}>
-        {d.dow && <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
-        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
+      <div className="lead-date-strip" style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 10px", flexShrink: 0 }}>
+        {d.dow && <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
+        <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
         {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -1491,6 +1491,12 @@ export default function BoardApp({
         @keyframes lampPulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
         .lamp-pulse { animation: lampPulse 1.8s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { .lamp-pulse { animation: none; } }
+        @media (max-width: 480px) {
+          .lead-date-strip { width: 108px !important; gap: 8px !important; padding: 10px 6px !important; }
+          .lead-date-line { font-size: 19px !important; }
+          .lead-name { font-size: 19px !important; }
+          .lead-tier { font-size: 15px !important; }
+        }
         select option { background: ${T.surface}; color: ${T.text}; }
         input:focus, select:focus, textarea:focus { border-color: ${T.accent} !important; }
         button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${T.accent}; outline-offset: 2px; }
