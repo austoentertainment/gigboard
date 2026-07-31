@@ -163,7 +163,8 @@ create table public.leads (
   assigned_dj_id uuid references public.users(id) on delete set null,
   honeybook_ref text unique,
   needs_review boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  vibo_link text
 );
 
 alter table public.leads enable row level security;
@@ -346,7 +347,8 @@ select
   l.travel_rate,
   l.fiance_name,
   case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.deposit_paid else null end as deposit_paid,
-  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.paid_in_full else null end as paid_in_full
+  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.paid_in_full else null end as paid_in_full,
+  l.vibo_link
 from public.leads l
 where
   public.is_owner()

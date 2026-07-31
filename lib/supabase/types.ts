@@ -104,6 +104,7 @@ export interface Database {
           honeybook_ref: string | null;
           needs_review: boolean;
           created_at: string;
+          vibo_link: string | null;
         };
         Insert: {
           client_name?: string | null;
@@ -128,6 +129,7 @@ export interface Database {
           assigned_dj_id?: string | null;
           honeybook_ref?: string | null;
           needs_review?: boolean;
+          vibo_link?: string | null;
         };
         Update: {
           client_name?: string | null;
@@ -150,6 +152,7 @@ export interface Database {
           status?: LeadStatus;
           assigned_dj_id?: string | null;
           needs_review?: boolean;
+          vibo_link?: string | null;
         };
         Relationships: [];
       };
@@ -259,6 +262,7 @@ export interface Database {
           needs_review: boolean;
           created_at: string;
           has_available: boolean;
+          vibo_link: string | null;
         };
         Relationships: [];
       };

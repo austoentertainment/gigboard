@@ -113,6 +113,28 @@ function PayoutEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: string, pa
   );
 }
 
+function ViboLinkEditor({ lead, onSave }: { lead: LeadRow; onSave: (id: string, viboLink: string | null) => void }) {
+  const [value, setValue] = useState(lead.vibo_link || "");
+  const [dirty, setDirty] = useState(false);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>VIBO LINK</span>
+      <Input
+        type="url"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setDirty(true); }}
+        placeholder="Paste the Vibo host link"
+        style={{ width: 220 }}
+      />
+      {dirty && (
+        <Btn small kind="primary" onClick={() => { onSave(lead.id, value.trim() || null); setDirty(false); }}>
+          SAVE
+        </Btn>
+      )}
+    </div>
+  );
+}
+
 function TravelEditor({
   lead, onSave,
 }: {
@@ -456,6 +478,17 @@ function LeadCard({
                 ${totalPayout(lead)}
               </div>
             )}
+            {lead.vibo_link && (
+              <a
+                href={lead.vibo_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: T.accent, textDecoration: "none" }}
+              >
+                VIBO ↗
+              </a>
+            )}
           </div>
         </div>
 
@@ -494,6 +527,12 @@ function LeadCard({
               </span></span>
             )}
             <PayoutEditor lead={lead} onSave={(id, payout) => onUpdateLead(id, { payout }, "Payout updated")} />
+          </div>
+        )}
+
+        {expanded && !djView && (
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
+            <ViboLinkEditor lead={lead} onSave={(id, viboLink) => onUpdateLead(id, { vibo_link: viboLink }, "Vibo link updated")} />
           </div>
         )}
 
