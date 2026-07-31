@@ -394,12 +394,12 @@ function LeadCard({
       }}
     >
       <div style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18, padding: "14px 12px", flexShrink: 0 }}>
+        <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
           {d.dow && <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.dow.toUpperCase()}</div>}
           <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.mon} {d.day}</div>
           {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2, textAlign: "center" }}>{d.year}</div>}
         </div>
-        <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
       </div>
 
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
