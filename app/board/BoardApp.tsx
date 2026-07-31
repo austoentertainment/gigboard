@@ -393,10 +393,10 @@ function LeadCard({
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 96, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 10px", flexShrink: 0 }}>
+      <div style={{ width: 130, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 10px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
         {d.dow && <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.03em", lineHeight: 1.1, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
-        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "0.02em", lineHeight: 1.2, whiteSpace: "nowrap" }}>{d.mon} {d.day}</div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
         {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
 
@@ -1030,9 +1030,9 @@ function MusicianLeadCard({ lead, booking, highlighted }: { lead: LeadRow; booki
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 96, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 10px", flexShrink: 0 }}>
+      <div style={{ width: 130, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 10px", flexShrink: 0 }}>
         {d.dow && <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.03em", lineHeight: 1.1, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
-        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "0.02em", lineHeight: 1.2, whiteSpace: "nowrap" }}>{d.mon} {d.day}</div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
         {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
