@@ -427,21 +427,19 @@ function LeadCard({
           onClick={() => setExpanded((e) => !e)}
           style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap", cursor: "pointer" }}
         >
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
-                {djView
-                  ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
-                  : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
-              </div>
-              {(lead.dj_tier || lead.prod_tier) && (
-                <div style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, whiteSpace: "nowrap" }}>
-                  {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
-                  {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
-                  {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
-                </div>
-              )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
+              {djView
+                ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
+                : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
             </div>
+            {(lead.dj_tier || lead.prod_tier) && (
+              <div style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
+                {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
+                {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
+                {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
+              </div>
+            )}
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>
               {lead.location || "location TBD"}
             </div>
