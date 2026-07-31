@@ -16,7 +16,8 @@ const T = {
 
 const inputStyle = {
   background: T.bg, border: `1px solid ${T.line}`, borderRadius: 6, color: T.text,
-  padding: "9px 10px", fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" as const,
+  // 16px avoids iOS Safari auto-zooming the page on focus.
+  padding: "9px 10px", fontSize: 16, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" as const,
 };
 
 export default function SetPasswordPage() {

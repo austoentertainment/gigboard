@@ -103,7 +103,10 @@ export const Field = ({ label, children }: { label: string; children: React.Reac
 
 const inputStyle: React.CSSProperties = {
   background: T.bg, border: `1px solid ${T.line}`, borderRadius: 6, color: T.text,
-  padding: "9px 10px", fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box",
+  // 16px avoids iOS Safari auto-zooming the page on focus (it zooms any
+  // input under that size to make the text readable, then the zoom sticks
+  // around after navigating away).
+  padding: "9px 10px", fontSize: 16, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box",
 };
 export const Input = (p: React.InputHTMLAttributes<HTMLInputElement>) => <input {...p} style={{ ...inputStyle, ...p.style }} />;
 export const Select = (p: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...p} style={{ ...inputStyle, ...p.style }} />;
