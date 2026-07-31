@@ -618,7 +618,11 @@ function LeadCard({
         </div>
         {!djView && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-            {lead.source && <span style={{ fontSize: 12.5, color: T.dim }}>via {lead.source}</span>}
+            {lead.source && (
+              <span style={{ fontSize: 12.5, color: T.dim }}>
+                {new Date(lead.created_at).toLocaleDateString("en-US")} via {lead.source}
+              </span>
+            )}
             <Btn kind="danger" small onClick={() => onDeleteLead(lead.id)}>DELETE</Btn>
           </div>
         )}
