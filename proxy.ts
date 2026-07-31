@@ -48,5 +48,9 @@ export const config = {
   // /api routes each do their own auth (session check, shared secret, or
   // Bearer token for cron) — external callers like Zapier/Vercel Cron can't
   // follow an HTML redirect anyway, so they must never hit this at all.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  // Static files served straight from /public (icons, images, fonts, etc.)
+  // must also be excluded — otherwise an unauthenticated request for one of
+  // them gets redirected to /login instead of the actual file, since they
+  // don't match any of the other exemptions.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff|woff2)$).*)"],
 };

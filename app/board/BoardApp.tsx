@@ -484,9 +484,11 @@ function LeadCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: T.accent, textDecoration: "none" }}
+                style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: T.accent, textDecoration: "none" }}
               >
-                VIBO ↗
+                {/* eslint-disable-next-line @next/next/no-img-element -- tiny fixed-size icon, not worth next/image's overhead */}
+                <img src="/vibo-icon.png" alt="" style={{ width: 14, height: 14 }} />
+                VIBO
               </a>
             )}
           </div>
