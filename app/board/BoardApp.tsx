@@ -490,7 +490,6 @@ function LeadCard({
         {expanded && !djView && (
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             {lead.contact && <span>{lead.contact}</span>}
-            {lead.source && <span>via {lead.source}</span>}
             {lead.assigned_dj_id && (
               <span>DJ: <span style={{ color: T.text, fontWeight: 700 }}>
                 {roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "assigned"}
@@ -620,7 +619,10 @@ function LeadCard({
           )}
         </div>
         {!djView && (
-          <Btn kind="danger" small style={{ flexShrink: 0 }} onClick={() => onDeleteLead(lead.id)}>DELETE</Btn>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {lead.source && <span style={{ fontSize: 12.5, color: T.dim }}>via {lead.source}</span>}
+            <Btn kind="danger" small onClick={() => onDeleteLead(lead.id)}>DELETE</Btn>
+          </div>
         )}
         </div>
         )}
