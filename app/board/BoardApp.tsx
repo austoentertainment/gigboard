@@ -416,6 +416,8 @@ function LeadCard({
   const availDjIds = availability.filter((r) => r.lead_id === lead.id && r.response === "available").map((r) => r.dj_user_id);
   const tier = tierStr(lead);
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
+  const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
+  const statusLabel = !djView && st === "booked" && assignedDjName ? assignedDjName : s.label;
 
   return (
     <div
@@ -470,7 +472,7 @@ function LeadCard({
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
-              <Tag color={s.color}>{s.label}</Tag>
+              <Tag color={s.color}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
             {totalPayout(lead) > 0 && (
@@ -523,9 +525,9 @@ function LeadCard({
         {expanded && !djView && (
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             {lead.contact && <span>{lead.contact}</span>}
-            {lead.assigned_dj_id && (
+            {lead.assigned_dj_id && st !== "booked" && (
               <span>DJ: <span style={{ color: T.text, fontWeight: 700 }}>
-                {roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "assigned"}
+                {assignedDjName}
               </span></span>
             )}
             <PayoutEditor lead={lead} onSave={(id, payout) => onUpdateLead(id, { payout }, "Payout updated")} />
