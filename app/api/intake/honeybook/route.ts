@@ -64,6 +64,11 @@ export async function POST(request: Request) {
   const zone = (parsed.travelZone || guessTravelZone(parsed.location || "") || "") as TravelZone | "";
   const payout = parsed.djTier && parsed.prodTier ? tierRate(settings, parsed.djTier, parsed.prodTier) : 0;
   const travel = zone ? travelRate(settings, zone) : 0;
+  // Local (Orange County) carries no automatic travel fee, so there's
+  // nothing about the DJ's payout left to confirm — review is only needed
+  // to double-check/adjust the travel fee for anywhere outside it, or when
+  // the zone couldn't even be determined from the location.
+  const needsReview = zone !== "Local";
 
   const { data: lead, error } = await admin
     .from("leads")
@@ -79,7 +84,7 @@ export async function POST(request: Request) {
       client_vision: parsed.vision,
       source: "honeybook",
       status: "checking",
-      needs_review: true,
+      needs_review: needsReview,
       honeybook_ref: String(honeybookRef),
       payout: payout || null,
       travel_zone: zone || null,
