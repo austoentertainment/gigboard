@@ -36,7 +36,7 @@ export const LEAD_STATUS: Record<string, { label: string; color: string }> = {
   ready: { label: "DJ AVAILABLE", color: T.green },
   meeting: { label: "MEETING BOOKED", color: T.violet },
   booked: { label: "BOOKED", color: T.green },
-  played: { label: "PLAYED", color: T.blue },
+  played: { label: "COMPLETED", color: T.blue },
   lost: { label: "LOST", color: T.red },
 };
 

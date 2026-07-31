@@ -417,7 +417,7 @@ function LeadCard({
   const tier = tierStr(lead);
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
   const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
-  const statusLabel = !djView && st === "booked" && assignedDjName ? assignedDjName : s.label;
+  const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName ? assignedDjName : s.label;
 
   return (
     <div
@@ -525,7 +525,7 @@ function LeadCard({
         {expanded && !djView && (
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             {lead.contact && <span>{lead.contact}</span>}
-            {lead.assigned_dj_id && st !== "booked" && (
+            {lead.assigned_dj_id && !["booked", "played"].includes(st) && (
               <span>DJ: <span style={{ color: T.text, fontWeight: 700 }}>
                 {assignedDjName}
               </span></span>
@@ -631,8 +631,8 @@ function LeadCard({
             </Btn>
           )}
           {!djView && st === "booked" && (
-            <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "played" }, "Marked as played")}>
-              MARK PLAYED
+            <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "played" }, "Marked as completed")}>
+              MARK COMPLETED
             </Btn>
           )}
           {!djView && st === "booked" && (
@@ -1599,7 +1599,7 @@ export default function BoardApp({
 
         {role === "owner" && activeTab === "archive" && (
           <>
-            {archived.length === 0 && <Empty text="Played and lost leads end up here." />}
+            {archived.length === 0 && <Empty text="Completed and lost leads end up here." />}
             {archived.map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
