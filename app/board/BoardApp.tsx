@@ -393,12 +393,11 @@ function LeadCard({
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 8px", flexShrink: 0 }}>
+      <div style={{ width: 96, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 10px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
-        {d.dow && <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
-        <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", lineHeight: 1.3 }}>{d.mon}</div>
-        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, fontFamily: "var(--font-heading), serif" }}>{d.day}</div>
-        {d.year && <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{"'" + String(d.year).slice(2)}</div>}
+        {d.dow && <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.03em", lineHeight: 1.1, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
+        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "0.02em", lineHeight: 1.2, whiteSpace: "nowrap" }}>{d.mon} {d.day}</div>
+        {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
 
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -1031,11 +1030,10 @@ function MusicianLeadCard({ lead, booking, highlighted }: { lead: LeadRow; booki
         borderRadius: 10, overflow: "hidden",
       }}
     >
-      <div style={{ width: 74, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 8px", flexShrink: 0 }}>
-        {d.dow && <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
-        <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", lineHeight: 1.3 }}>{d.mon}</div>
-        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, fontFamily: "var(--font-heading), serif" }}>{d.day}</div>
-        {d.year && <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{"'" + String(d.year).slice(2)}</div>}
+      <div style={{ width: 96, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "14px 10px", flexShrink: 0 }}>
+        {d.dow && <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.03em", lineHeight: 1.1, marginTop: 4, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
+        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "0.02em", lineHeight: 1.2, whiteSpace: "nowrap" }}>{d.mon} {d.day}</div>
+        {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
         <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
