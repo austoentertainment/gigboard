@@ -395,10 +395,10 @@ function LeadCard({
     >
       <div style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, padding: "14px 12px", flexShrink: 0 }}>
         <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {d.dow && <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
-          <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
-          {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          {d.dow && <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.dow.toUpperCase()}</div>}
+          <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.mon} {d.day}</div>
+          {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2, textAlign: "center" }}>{d.year}</div>}
         </div>
       </div>
 
@@ -427,16 +427,21 @@ function LeadCard({
               </div>
             )}
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>
-              {djView
-                ? [lead.location, totalPayout(lead) ? `$${totalPayout(lead)} payout` : null].filter(Boolean).join(" · ") || "details TBD"
-                : [lead.location, totalPayout(lead) ? `$${totalPayout(lead)}` : null].filter(Boolean).join(" · ") || "details TBD"}
+              {lead.location || "location TBD"}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
-            {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
-            <Tag color={s.color}>{s.label}</Tag>
-            <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
+              {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
+              <Tag color={s.color}>{s.label}</Tag>
+              <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
+            </div>
+            {totalPayout(lead) > 0 && (
+              <div style={{ fontSize: 20, fontWeight: 900, color: T.text }}>
+                ${totalPayout(lead)}
+              </div>
+            )}
           </div>
         </div>
 
