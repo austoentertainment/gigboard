@@ -8,7 +8,7 @@ import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import {
   T, DJ_TIERS, LEAD_STATUS, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
-  MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES,
+  MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES, TIER_COLORS,
 } from "./ui";
 
 type LeadRow = Database["public"]["Views"]["leads_feed"]["Row"];
@@ -421,9 +421,11 @@ function LeadCard({
                 ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
                 : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
             </div>
-            {tier && (
-              <div style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", color: T.blue, lineHeight: 1.2, marginTop: 2 }}>
-                {tier}
+            {(lead.dj_tier || lead.prod_tier) && (
+              <div style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
+                {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
+                {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
+                {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
               </div>
             )}
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>

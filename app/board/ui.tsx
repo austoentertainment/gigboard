@@ -19,6 +19,18 @@ export const TRAVEL_ZONES = ["Local", "Extended Local", "Regional", "Central CA"
 export const MUSICIAN_INSTRUMENTS = ["Saxophone", "Violin"] as const;
 export const MUSICIAN_SERVICES = ["Ceremony", "Cocktail Hour", "Dinner", "Formalities", "2 Hours of Dancing"] as const;
 
+// Top DJ tier + top production tier both read as "gold", middle as
+// "silver", entry-level as "bronze" — a medal metaphor so the tier line
+// on a lead card reads at a glance without needing to parse the words.
+export const TIER_COLORS: Record<string, string> = {
+  Headliner: "#E5C158",
+  Marquee: "#E5C158",
+  Resident: "#C8CDD2",
+  Modern: "#C8CDD2",
+  Associate: "#C68A4E",
+  Essential: "#C68A4E",
+};
+
 export const LEAD_STATUS: Record<string, { label: string; color: string }> = {
   checking: { label: "DATE CHECK", color: T.accent },
   ready: { label: "DJ AVAILABLE", color: T.green },
