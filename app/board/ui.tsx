@@ -34,7 +34,7 @@ export function fmtDate(iso: string | null) {
   return {
     day: String(d.getDate()).padStart(2, "0"),
     mon: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
-    dow: d.toLocaleString("en-US", { weekday: "short" }),
+    dow: d.toLocaleString("en-US", { weekday: "long" }),
     year: d.getFullYear(),
   };
 }
