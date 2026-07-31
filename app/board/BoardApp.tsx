@@ -375,6 +375,7 @@ function LeadCard({
   onSaveNotes: (id: string, notes: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(!!highlighted);
   const st = leadStatus(lead);
   const s = LEAD_STATUS[st];
   const d = fmtDate(lead.event_date);
@@ -409,7 +410,10 @@ function LeadCard({
           />
         ) : (
           <>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div
+          onClick={() => setExpanded((e) => !e)}
+          style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap", cursor: "pointer" }}
+        >
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {djView ? (
@@ -424,43 +428,44 @@ function LeadCard({
             <div style={{ fontSize: 12.5, color: T.dim, marginTop: 2 }}>
               {djView
                 ? [lead.location, totalPayout(lead) ? `$${totalPayout(lead)} payout` : null].filter(Boolean).join(" · ") || "details TBD"
-                : [tier, lead.location].filter(Boolean).join(" · ") || "tier TBD"}
+                : [tier, lead.location, totalPayout(lead) ? `$${totalPayout(lead)}` : null].filter(Boolean).join(" · ") || "tier TBD"}
             </div>
-            {djView && (lead.deposit_paid || lead.paid_in_full) && (
-              <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                {lead.deposit_paid && <Tag color={T.green}>DEPOSIT PAID</Tag>}
-                {lead.paid_in_full && <Tag color={T.green}>PAID IN FULL</Tag>}
-              </div>
-            )}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-            <div style={{ display: "flex", gap: 6 }}>
-              {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
-              {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
-              <Tag color={s.color}>{s.label}</Tag>
-            </div>
-            {!djView && ["meeting", "booked", "played"].includes(st) && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
-                <Btn
-                  kind={lead.deposit_paid ? "green" : "ghost"}
-                  small
-                  onClick={() => onUpdateLead(lead.id, { deposit_paid: !lead.deposit_paid }, lead.deposit_paid ? "Deposit unmarked" : "Deposit marked paid")}
-                >
-                  {lead.deposit_paid ? "✓ " : ""}DEPOSIT PAID
-                </Btn>
-                <Btn
-                  kind={lead.paid_in_full ? "green" : "ghost"}
-                  small
-                  onClick={() => onUpdateLead(lead.id, { paid_in_full: !lead.paid_in_full }, lead.paid_in_full ? "Unmarked paid in full" : "Marked paid in full")}
-                >
-                  {lead.paid_in_full ? "✓ " : ""}PAID IN FULL
-                </Btn>
-              </div>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
+            {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
+            <Tag color={s.color}>{s.label}</Tag>
+            <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
           </div>
         </div>
 
-        {!djView && (
+        {expanded && djView && (lead.deposit_paid || lead.paid_in_full) && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {lead.deposit_paid && <Tag color={T.green}>DEPOSIT PAID</Tag>}
+            {lead.paid_in_full && <Tag color={T.green}>PAID IN FULL</Tag>}
+          </div>
+        )}
+
+        {expanded && !djView && ["meeting", "booked", "played"].includes(st) && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
+            <Btn
+              kind={lead.deposit_paid ? "green" : "ghost"}
+              small
+              onClick={() => onUpdateLead(lead.id, { deposit_paid: !lead.deposit_paid }, lead.deposit_paid ? "Deposit unmarked" : "Deposit marked paid")}
+            >
+              {lead.deposit_paid ? "✓ " : ""}DEPOSIT PAID
+            </Btn>
+            <Btn
+              kind={lead.paid_in_full ? "green" : "ghost"}
+              small
+              onClick={() => onUpdateLead(lead.id, { paid_in_full: !lead.paid_in_full }, lead.paid_in_full ? "Unmarked paid in full" : "Marked paid in full")}
+            >
+              {lead.paid_in_full ? "✓ " : ""}PAID IN FULL
+            </Btn>
+          </div>
+        )}
+
+        {expanded && !djView && (
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             {lead.contact && <span>{lead.contact}</span>}
             {lead.source && <span>via {lead.source}</span>}
@@ -473,7 +478,7 @@ function LeadCard({
           </div>
         )}
 
-        {!djView && (
+        {expanded && !djView && (
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             <TravelEditor
               lead={lead}
@@ -485,25 +490,25 @@ function LeadCard({
           </div>
         )}
 
-        {lead.upgrades && (
+        {expanded && lead.upgrades && (
           <div style={{ fontSize: 12.5, color: T.accent }}>
             <span style={{ color: T.dim, fontWeight: 700, letterSpacing: "0.1em", fontSize: 10.5 }}>UPGRADES </span>
             {lead.upgrades}
           </div>
         )}
-        {lead.client_vision && (
+        {expanded && lead.client_vision && (
           <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap", borderLeft: `2px solid ${T.line}`, paddingLeft: 8 }}>
             {lead.client_vision}
           </div>
         )}
-        {djView && lead.dj_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.dj_notes}</div>}
-        {!djView && lead.owner_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.owner_notes}</div>}
+        {expanded && djView && lead.dj_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.dj_notes}</div>}
+        {expanded && !djView && lead.owner_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.owner_notes}</div>}
 
-        {!djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} availability={availability} />}
+        {expanded && !djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} availability={availability} />}
 
-        {["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
+        {expanded && ["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
 
-        {!djView && ["meeting", "booked", "played"].includes(st) && (
+        {expanded && !djView && ["meeting", "booked", "played"].includes(st) && (
           <MusicianBooking
             leadId={lead.id}
             musicianRoster={musicianRoster}
@@ -515,8 +520,9 @@ function LeadCard({
           />
         )}
 
-        {!djView && <LeadHistory leadId={lead.id} roster={roster} userId={userId} onFetch={onFetchHistory} />}
+        {expanded && !djView && <LeadHistory leadId={lead.id} roster={roster} userId={userId} onFetch={onFetchHistory} />}
 
+        {expanded && (
         <div style={{ display: "flex", gap: 8, marginTop: 2, alignItems: "center", justifyContent: "space-between", opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto", transition: "opacity 120ms" }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!djView && lead.needs_review && (
@@ -595,6 +601,7 @@ function LeadCard({
           <Btn kind="danger" small style={{ flexShrink: 0 }} onClick={() => onDeleteLead(lead.id)}>DELETE</Btn>
         )}
         </div>
+        )}
           </>
         )}
       </div>
