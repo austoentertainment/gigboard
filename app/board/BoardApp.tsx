@@ -26,25 +26,37 @@ const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_
 const isPastEvent = (l: LeadRow) => !!l.event_date && l.event_date < new Date().toISOString().slice(0, 10);
 const bySubmitted = (a: LeadRow, b: LeadRow) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-function SortToggle({ sortBy, onChange }: { sortBy: "event" | "submitted"; onChange: (v: "event" | "submitted") => void }) {
+function SortToggle({
+  sortBy, sortDir, onChange,
+}: {
+  sortBy: "event" | "submitted";
+  sortDir: "asc" | "desc";
+  onChange: (v: "event" | "submitted") => void;
+}) {
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>SORT</span>
-      {(["event", "submitted"] as const).map((v) => (
-        <button
-          key={v}
-          onClick={() => onChange(v)}
-          style={{
-            fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
-            padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-            background: sortBy === v ? T.teal : "transparent",
-            color: T.text,
-            border: `1px solid ${sortBy === v ? T.teal : T.line}`,
-          }}
-        >
-          {v === "event" ? "EVENT DATE" : "SUBMITTED"}
-        </button>
-      ))}
+      {(["event", "submitted"] as const).map((v) => {
+        const active = sortBy === v;
+        return (
+          <button
+            key={v}
+            onClick={() => onChange(v)}
+            title={active ? "Click again to flip the sort direction" : undefined}
+            style={{
+              fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+              padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+              background: active ? T.teal : "transparent",
+              color: T.text,
+              border: `1px solid ${active ? T.teal : T.line}`,
+              display: "flex", alignItems: "center", gap: 5,
+            }}
+          >
+            {v === "event" ? "EVENT DATE" : "SUBMITTED"}
+            {active && <span>{sortDir === "asc" ? "↑" : "↓"}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1160,9 +1172,26 @@ export default function BoardApp({
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
   const [sortBy, setSortBy] = useState<"event" | "submitted">(role === "dj" ? "submitted" : "event");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [motionDjFilter, setMotionDjFilter] = useState<string>("all");
   const [confirmState, setConfirmState] = useState<{ message: string; confirmLabel: string; resolve: (v: boolean) => void } | null>(null);
   const [busyLeadId, setBusyLeadId] = useState<string | null>(null);
+
+  // Clicking the already-active sort pill flips direction; switching to the
+  // other field resets to ascending as a sensible default.
+  const handleSortChange = useCallback((v: "event" | "submitted") => {
+    setSortBy((prev) => {
+      if (prev === v) { setSortDir((d) => (d === "asc" ? "desc" : "asc")); return prev; }
+      setSortDir("asc");
+      return v;
+    });
+  }, []);
+
+  const sortLeads = useCallback((list: LeadRow[]) => {
+    const base = sortBy === "event" ? byDate : bySubmitted;
+    const dirMult = sortDir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => base(a, b) * dirMult);
+  }, [sortBy, sortDir]);
 
   const ping = useCallback((m: string) => {
     const id = Date.now() + Math.random();
@@ -1465,20 +1494,20 @@ export default function BoardApp({
             )}
             {showAdd === "import" && <ImportForm onSave={addLead} onCancel={() => setShowAdd(false)} ping={ping} companySettings={companySettings} />}
             {showAdd === "manual" && <ManualForm onSave={addLead} onCancel={() => setShowAdd(false)} ping={ping} companySettings={companySettings} />}
-            {checking.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
+            {checking.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {checking.length === 0 && !showAdd && (
               <Empty text="No leads in date check. Import a HoneyBook inquiry and your roster gets pinged for availability." />
             )}
             {checking.filter((l) => leadStatus(l) === "ready").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
-            {checking.filter((l) => leadStatus(l) === "ready").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
+            {sortLeads(checking.filter((l) => leadStatus(l) === "ready")).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
-            {checking.filter((l) => leadStatus(l) === "checking").sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
+            {sortLeads(checking.filter((l) => leadStatus(l) === "checking")).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
@@ -1509,11 +1538,11 @@ export default function BoardApp({
               </div>
             )}
 
-            {filteredMotion.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
+            {filteredMotion.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {filteredMotion.length === 0 && (
               <Empty text={motionDjFilter === "all" ? "Nothing in motion. When a date check comes back green, book the meeting and it moves here." : "No meetings or bookings for this DJ yet."} />
             )}
-            {filteredMotion.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
+            {sortLeads(filteredMotion).map((l) => (
               <LeadCard key={l.id} lead={l} roster={roster} availability={availability} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
@@ -1548,8 +1577,8 @@ export default function BoardApp({
               <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
-            {myChecks.length > 0 && <SortToggle sortBy={sortBy} onChange={setSortBy} />}
-            {myChecks.sort(sortBy === "event" ? byDate : bySubmitted).map((l) => (
+            {myChecks.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(myChecks).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
