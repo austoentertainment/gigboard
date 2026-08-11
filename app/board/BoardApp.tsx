@@ -1262,6 +1262,34 @@ function CompanySettings({
   );
 }
 
+function DjFilterBar({
+  roster, value, onChange,
+}: { roster: RosterUser[]; value: string; onChange: (id: string) => void }) {
+  if (roster.length === 0) return null;
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {[{ id: "all", label: "ALL" }, ...roster.map((d) => ({ id: d.id, label: d.display_name || d.email }))].map((opt) => {
+        const isActive = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            onClick={() => onChange(opt.id)}
+            style={{
+              fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+              padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+              background: isActive ? T.teal : "transparent",
+              color: T.text,
+              border: `1px solid ${isActive ? T.teal : T.line}`,
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function StatusBanner({ allCaughtUp }: { allCaughtUp: boolean }) {
   return (
     <div
@@ -1606,7 +1634,19 @@ export default function BoardApp({
   const isAwaitingMyHeadlinerCall = (l: LeadRow) => l.dj_tier === "Headliner" && !myAvailability[l.id];
   const headlinerAwaitingMe = checking.filter(isAwaitingMyHeadlinerCall);
 
-  const filteredMotion = motionDjFilter === "all" ? inMotion : inMotion.filter((l) => l.assigned_dj_id === motionDjFilter);
+  // "Meetings & Booked" split three ways: still-in-meeting-stage, booked
+  // gigs yet to happen, and booked gigs whose date has already passed but
+  // haven't been marked completed yet (the daily cron eventually sweeps
+  // those into Archive as "played", but Past is the real-time view before
+  // that happens).
+  const meetingLeads = inMotion.filter((l) => leadStatus(l) === "meeting");
+  const bookedLeads = inMotion.filter((l) => leadStatus(l) === "booked");
+  const upcomingBooked = bookedLeads.filter((l) => !isPastEvent(l));
+  const pastBooked = bookedLeads.filter((l) => isPastEvent(l));
+  const djFilter = (list: LeadRow[]) => motionDjFilter === "all" ? list : list.filter((l) => l.assigned_dj_id === motionDjFilter);
+  const filteredMeetings = djFilter(meetingLeads);
+  const filteredUpcoming = djFilter(upcomingBooked);
+  const filteredPast = djFilter(pastBooked);
 
   // No dj_tier on the lead means no tier restriction applies. But an empty
   // myTiers means the owner hasn't qualified this DJ for any tier yet — that
@@ -1672,7 +1712,9 @@ export default function BoardApp({
 
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
-    { id: "motion", label: "MEETINGS & BOOKED", count: inMotion.length },
+    { id: "meetings", label: "MEETINGS", count: meetingLeads.length },
+    { id: "upcoming", label: "UPCOMING", count: upcomingBooked.length },
+    { id: "past", label: "PAST", count: pastBooked.length },
     { id: "archive", label: "ARCHIVE", count: archived.length },
     { id: "roster", label: "ROSTER", count: roster.length },
     { id: "settings", label: "SETTINGS", count: 0 },
@@ -1786,36 +1828,40 @@ export default function BoardApp({
           </>
         )}
 
-        {role === "owner" && activeTab === "motion" && (
+        {role === "owner" && activeTab === "meetings" && (
           <>
-            {roster.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {[{ id: "all", label: "ALL" }, ...roster.map((d) => ({ id: d.id, label: d.display_name || d.email }))].map((opt) => {
-                  const isActive = motionDjFilter === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => setMotionDjFilter(opt.id)}
-                      style={{
-                        fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
-                        padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-                        background: isActive ? T.teal : "transparent",
-                        color: T.text,
-                        border: `1px solid ${isActive ? T.teal : T.line}`,
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+            <DjFilterBar roster={roster} value={motionDjFilter} onChange={setMotionDjFilter} />
+            {filteredMeetings.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {filteredMeetings.length === 0 && (
+              <Empty text={motionDjFilter === "all" ? "No meetings booked yet. When a date check comes back green, book the meeting and it moves here." : "No meetings booked for this DJ yet."} />
             )}
+            {sortLeads(filteredMeetings).map((l) => (
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
+          </>
+        )}
 
-            {filteredMotion.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {filteredMotion.length === 0 && (
-              <Empty text={motionDjFilter === "all" ? "Nothing in motion. When a date check comes back green, book the meeting and it moves here." : "No meetings or bookings for this DJ yet."} />
+        {role === "owner" && activeTab === "upcoming" && (
+          <>
+            <DjFilterBar roster={roster} value={motionDjFilter} onChange={setMotionDjFilter} />
+            {filteredUpcoming.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {filteredUpcoming.length === 0 && (
+              <Empty text={motionDjFilter === "all" ? "No upcoming booked gigs yet." : "No upcoming booked gigs for this DJ yet."} />
             )}
-            {sortLeads(filteredMotion).map((l) => (
+            {sortLeads(filteredUpcoming).map((l) => (
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
+          </>
+        )}
+
+        {role === "owner" && activeTab === "past" && (
+          <>
+            <DjFilterBar roster={roster} value={motionDjFilter} onChange={setMotionDjFilter} />
+            {filteredPast.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {filteredPast.length === 0 && (
+              <Empty text={motionDjFilter === "all" ? "Nothing here — booked gigs whose date has passed show up until marked completed." : "No past booked gigs for this DJ yet."} />
+            )}
+            {sortLeads(filteredPast).map((l) => (
               <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
