@@ -71,6 +71,29 @@ function leadStatus(lead: LeadRow) {
   return lead.status;
 }
 
+// A single label per lead for cross-tab search results — reuses the same
+// wording as the tabs (Pipeline/Meetings/Upcoming/Past/Archive) so a
+// result reads the same whether you'd normally find it as "ready" in
+// Pipeline or "booked" split into Upcoming vs. Past.
+function stageLabel(lead: LeadRow): string {
+  const st = leadStatus(lead);
+  if (st === "booked") return isPastEvent(lead) ? "PAST" : "UPCOMING";
+  return LEAD_STATUS[st].label;
+}
+
+function matchesSearch(lead: LeadRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const d = fmtDate(lead.event_date);
+  const haystack = [
+    lead.client_name,
+    lead.fiance_name,
+    lead.event_date,
+    d.dow, d.mon, d.day ? String(d.day) : null, d.year ? String(d.year) : null,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return haystack.includes(q);
+}
+
 function AvailChips({ lead, roster, availability }: { lead: LeadRow; roster: RosterUser[]; availability: AvailabilityRow[] }) {
   const responses = availability.filter((r) => r.lead_id === lead.id);
   const rosterMap = Object.fromEntries(roster.map((d) => [d.id, d.display_name || d.email]));
@@ -1382,6 +1405,7 @@ export default function BoardApp({
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [tab, setTab] = useState("pipeline");
+  const [searchQuery, setSearchQuery] = useState("");
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
   const [sortBy, setSortBy] = useState<"event" | "submitted">(role === "dj" ? "submitted" : "event");
@@ -1626,6 +1650,12 @@ export default function BoardApp({
   const inMotion = active.filter((l) => ["meeting", "booked"].includes(leadStatus(l)));
   const archived = leads.filter((l) => ["played", "lost"].includes(leadStatus(l)));
 
+  // Search runs across every lead this role can already see (leads_feed
+  // has already scoped that server-side), regardless of which tab it'd
+  // normally live in — that's the whole point, vs. filtering one tab.
+  const searchActive = searchQuery.trim().length > 0;
+  const searchResults = searchActive ? sortLeads(leads.filter((l) => matchesSearch(l, searchQuery))) : [];
+
   // Headliner leads are hidden from every DJ (see leads_feed) until Austin
   // has personally passed on them — he gets first refusal. Until he
   // answers, they're pulled out of the normal pipeline sections into
@@ -1773,11 +1803,35 @@ export default function BoardApp({
             </div>
           </div>
 
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+            <div style={{ position: "relative", width: "100%", maxWidth: 260 }}>
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name or date…"
+                aria-label="Search leads by name or event date"
+                style={{ paddingRight: searchQuery ? 30 : 10 }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Clear search"
+                  style={{
+                    position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           <nav style={{ display: "flex", gap: 4, marginTop: 14, overflowX: "auto" }}>
             {tabs.map((t) => {
               const isActive = t.id === activeTab;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                <button key={t.id} onClick={() => { setTab(t.id); setSearchQuery(""); }} style={{
                   fontFamily: "inherit", background: "none", border: "none",
                   borderBottom: `2px solid ${isActive ? T.accent : "transparent"}`,
                   color: isActive ? T.text : T.dim, fontWeight: 800, fontSize: 12,
@@ -1793,6 +1847,41 @@ export default function BoardApp({
       </header>
 
       <main style={{ maxWidth: 860, margin: "0 auto", padding: 16, display: "flex", flexDirection: "column", gap: 12, paddingBottom: 60 }}>
+        {searchActive && (
+          <>
+            <div style={{ fontSize: 11, color: T.dim }}>
+              {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for &ldquo;{searchQuery}&rdquo; — across every status
+            </div>
+            {searchResults.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {searchResults.length === 0 && <Empty text="No leads match that name or date." />}
+            {searchResults.map((l) => (
+              <div key={l.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>{stageLabel(l)}</div>
+                {role === "musician" ? (
+                  <MusicianLeadCard
+                    lead={l}
+                    booking={myMusicianBookings.find((b) => b.lead_id === l.id)}
+                    myAnswer={myAvailability[l.id]}
+                    onSetAvail={setAvail}
+                    busy={busyLeadId === l.id}
+                    highlighted={l.id === highlightLeadId}
+                  />
+                ) : (
+                  <LeadCard
+                    lead={l} djView={role === "dj"} roster={role === "owner" ? assignableRoster : roster} availability={availability}
+                    myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId}
+                    onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians}
+                    onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking}
+                    onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes}
+                  />
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {!searchActive && (
+        <>
         {role === "owner" && activeTab === "pipeline" && (
           <>
             {!showAdd && (
@@ -2069,6 +2158,8 @@ export default function BoardApp({
               return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
             })}
           </>
+        )}
+        </>
         )}
       </main>
 
