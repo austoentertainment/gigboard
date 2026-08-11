@@ -373,8 +373,11 @@ grant select on public.leads_feed to authenticated;
 -- ============================================================
 -- dj_leaderboard — aggregate-only, so any DJ can see the team's
 -- standings without exposing anyone's individual leads/clients.
--- Same count/total semantics as the owner's Roster view (all leads
--- ever assigned, any status).
+-- Same count/total semantics as the owner's Roster view (every lead
+-- actually booked or played). Scoped to status in ('booked','played')
+-- rather than just "has an assigned_dj_id" — a DJ can be assigned during
+-- the meeting stage (visible in their Pending tab) before the owner marks
+-- it booked, and that assignment must not count as a won/earned gig yet.
 -- ============================================================
 
 create view public.dj_leaderboard as
@@ -385,7 +388,7 @@ select
   count(l.id) as booking_count,
   coalesce(sum(coalesce(l.payout, 0) + coalesce(l.travel_rate, 0)), 0) as booking_total
 from public.users u
-left join public.leads l on l.assigned_dj_id = u.id
+left join public.leads l on l.assigned_dj_id = u.id and l.status in ('booked', 'played')
 where u.role = 'dj'
 group by u.id, u.display_name, u.email;
 

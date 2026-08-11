@@ -1012,7 +1012,11 @@ function Roster({
         const profile = rosterProfiles.find((p) => p.user_id === dj.id);
         const tiers = profile?.dj_tier_visibility ?? [];
         const notifyEnabled = profile?.notify_email ?? false;
-        const djLeads = leads.filter((l) => l.assigned_dj_id === dj.id);
+        // assigned_dj_id alone isn't enough — a lead can be assigned during
+        // the meeting stage (Pending) before it's actually marked booked,
+        // so counting every assignment here would credit a DJ for gigs
+        // that were never confirmed.
+        const djLeads = leads.filter((l) => l.assigned_dj_id === dj.id && ["booked", "played"].includes(leadStatus(l)));
         const bookingCount = djLeads.length;
         const bookingTotal = djLeads.reduce((sum, l) => sum + totalPayout(l), 0);
         return (
