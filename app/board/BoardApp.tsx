@@ -1514,6 +1514,8 @@ export default function BoardApp({
     ping(
       isMyHeadlinerPass
         ? "Passed — Headliner DJs can see this lead now"
+        : role === "owner" && answer === "available"
+        ? "Marked yourself available — moved to your ready-to-book list"
         : answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date"
     );
     loadData();
