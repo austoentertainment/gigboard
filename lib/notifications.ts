@@ -1,14 +1,10 @@
 import { createAdminClient } from "./supabase/admin";
 import { sendEmail } from "./email";
 import { fmtDate } from "@/app/board/ui";
+import { INSTRUMENT_KEYWORD } from "./instruments";
 import type { Database, DjTier, Instrument } from "./supabase/types";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
-
-const INSTRUMENT_KEYWORD: Record<Instrument, string> = {
-  Saxophone: "sax",
-  Violin: "violin",
-};
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoentertainment.com";
 

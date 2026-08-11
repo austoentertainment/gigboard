@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService } from "@/lib/supabase/types";
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
+import { INSTRUMENT_KEYWORD } from "@/lib/instruments";
 import {
   T, DJ_TIERS, LEAD_STATUS, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
@@ -423,10 +424,14 @@ function LeadCard({
   // but a DJ who already said yes needs their own copy to read "waiting on
   // Austin" rather than the generic "DJ AVAILABLE" call-to-action.
   const iAmFollowingUp = djView && st === "ready" && myAnswer === "available";
+  // Same idea for a DJ who's passed — the lead is unchanged for everyone
+  // else, but their own Archive copy should read "PASSED", not the
+  // generic checking/ready label.
+  const iHavePassed = djView && myAnswer === "pass" && ["checking", "ready"].includes(st);
   const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName
     ? assignedDjName
-    : iAmFollowingUp ? "FOLLOW UP" : s.label;
-  const statusColor = iAmFollowingUp ? T.violet : s.color;
+    : iAmFollowingUp ? "FOLLOW UP" : iHavePassed ? "PASSED" : s.label;
+  const statusColor = iAmFollowingUp ? T.violet : iHavePassed ? T.dim : s.color;
 
   return (
     <div
@@ -1112,10 +1117,27 @@ function Roster({
   );
 }
 
-function MusicianLeadCard({ lead, booking, highlighted }: { lead: LeadRow; booking: LeadMusicianRow; highlighted?: boolean }) {
+function MusicianLeadCard({
+  lead, booking, myAnswer, onSetAvail, busy, highlighted,
+}: {
+  lead: LeadRow;
+  booking?: LeadMusicianRow;
+  myAnswer?: "available" | "pass";
+  onSetAvail?: (leadId: string, answer: "available" | "pass") => void;
+  busy?: boolean;
+  highlighted?: boolean;
+}) {
   const d = fmtDate(lead.event_date);
   const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead";
-  const services = booking.services || [];
+  const services = booking?.services || [];
+  // Before a booking exists this card is a date check — it just needs a
+  // response tag and the available/pass buttons, not services/payout
+  // (those aren't decided until Austin actually books the musician).
+  const respondedTag = myAnswer === "available"
+    ? { label: "AVAILABLE", color: T.green }
+    : myAnswer === "pass"
+    ? { label: "PASSED", color: T.dim }
+    : { label: "NEEDS RESPONSE", color: T.accent };
   return (
     <div
       id={`lead-${lead.id}`}
@@ -1131,18 +1153,34 @@ function MusicianLeadCard({ lead, booking, highlighted }: { lead: LeadRow; booki
         <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
         {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
-      <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
+      <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
+          {!booking && <Tag color={respondedTag.color}>{respondedTag.label}</Tag>}
+        </div>
         <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {services.map((s) => <Tag key={s} color={T.blue}>{s}</Tag>)}
-          {services.length === 0 && <span style={{ fontSize: 11, color: T.red }}>services not set yet — check with Austin</span>}
-        </div>
-        <div style={{ fontSize: 12.5 }}>
-          {booking.payout != null
-            ? <>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></>
-            : <span style={{ color: T.dim }}>Payout not set yet</span>}
-        </div>
+        {booking ? (
+          <>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {services.map((s) => <Tag key={s} color={T.blue}>{s}</Tag>)}
+              {services.length === 0 && <span style={{ fontSize: 11, color: T.red }}>services not set yet — check with Austin</span>}
+            </div>
+            <div style={{ fontSize: 12.5 }}>
+              {booking.payout != null
+                ? <>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></>
+                : <span style={{ color: T.dim }}>Payout not set yet</span>}
+            </div>
+          </>
+        ) : onSetAvail && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn kind={myAnswer === "available" ? "green" : "primary"} small onClick={() => onSetAvail(lead.id, "available")}>
+              {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
+            </Btn>
+            <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small onClick={() => onSetAvail(lead.id, "pass")}>
+              {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
+            </Btn>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1241,6 +1279,7 @@ export default function BoardApp({
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myTiers, setMyTiers] = useState<string[]>([]);
+  const [myInstrument, setMyInstrument] = useState<Instrument | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [tab, setTab] = useState("pipeline");
@@ -1317,6 +1356,10 @@ export default function BoardApp({
     } else {
       const { data: myBookings } = await supabase.from("lead_musicians").select("*").eq("musician_id", userId);
       setMyMusicianBookings(myBookings ?? []);
+      const { data: mine } = await supabase.from("availability_responses").select("lead_id,response").eq("dj_user_id", userId);
+      setMyAvailability(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.response])));
+      const { data: prof } = await supabase.from("dj_profiles").select("instrument").eq("user_id", userId).single();
+      setMyInstrument((prof?.instrument as Instrument | null) ?? null);
     }
     setLoading(false);
   }, [supabase, role, userId]);
@@ -1480,18 +1523,21 @@ export default function BoardApp({
   // "not qualified for anything yet" (an eligibility default).
   const tierVisible = (l: LeadRow) => !l.dj_tier || myTiers.includes(l.dj_tier);
   const myChecks = checking.filter(tierVisible);
+  // Once I've responded, the lead moves out of Date Checks — "available"
+  // goes to Pending, "pass" goes to Archive — leaving only the ones I
+  // haven't answered yet.
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
-  // Once I've said I'm available, the lead moves out of Date Checks and
-  // into Pending — it's still just "ready" in the database (any DJ could
-  // still be picked), but from my side there's nothing left to answer.
   // Once Austin assigns me to a meeting, it stays in Pending too — as
   // "MEETING BOOKED" — until he marks it Booked, which is what moves it
   // into Upcoming.
   const myPending = [
-    ...myChecks.filter((l) => leadStatus(l) === "ready" && myAvailability[l.id] === "available"),
+    ...myChecks.filter((l) => myAvailability[l.id] === "available"),
     ...active.filter((l) => l.assigned_dj_id === userId && leadStatus(l) === "meeting"),
   ];
-  const myOpenChecks = myChecks.filter((l) => !(leadStatus(l) === "ready" && myAvailability[l.id] === "available"));
+  // A pass is reversible — the card in Archive still shows the
+  // available/pass buttons, so flipping back to available moves it
+  // straight into Pending.
+  const myArchive = myChecks.filter((l) => myAvailability[l.id] === "pass");
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
@@ -1501,6 +1547,21 @@ export default function BoardApp({
   const myMusicianLeads = leads.filter((l) => myMusicianLeadIds.has(l.id));
   const myMusicianUpcoming = myMusicianLeads.filter((l) => !isPastEvent(l));
   const myMusicianCompleted = myMusicianLeads.filter((l) => isPastEvent(l));
+
+  // A musician's "date check" pool mirrors a DJ's, just filtered by
+  // instrument keyword in the upgrades text instead of tier — there's no
+  // per-musician visibility list to configure, so no instrument means no
+  // matches rather than "show everything."
+  const instrumentKeyword = myInstrument ? INSTRUMENT_KEYWORD[myInstrument] : null;
+  const instrumentVisible = (l: LeadRow) => !!instrumentKeyword && (l.upgrades || "").toLowerCase().includes(instrumentKeyword);
+  // Austin can book a musician directly at any pipeline stage, independent
+  // of the DJ-side status — so a lead can already be an Upcoming booking
+  // while still sitting at "checking" overall. Once booked, it belongs
+  // only in Upcoming/Completed, not back in the date-check pool.
+  const myMusicianChecks = checking.filter(instrumentVisible).filter((l) => !myMusicianLeadIds.has(l.id));
+  const needsMeMusician = myMusicianChecks.filter((l) => !myAvailability[l.id]);
+  const myMusicianPending = myMusicianChecks.filter((l) => myAvailability[l.id] === "available");
+  const myMusicianArchive = myMusicianChecks.filter((l) => myAvailability[l.id] === "pass");
 
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
@@ -1512,11 +1573,15 @@ export default function BoardApp({
   const djTabs = [
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
     { id: "pending", label: "PENDING", count: myPending.length },
+    { id: "archive", label: "ARCHIVE", count: myArchive.length },
     { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
     { id: "completed", label: "COMPLETED", count: 0 },
     { id: "leaderboard", label: "LEADERBOARD", count: 0 },
   ];
   const musicianTabs = [
+    { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
+    { id: "musician-pending", label: "PENDING", count: myMusicianPending.length },
+    { id: "musician-archive", label: "ARCHIVE", count: myMusicianArchive.length },
     { id: "musician-upcoming", label: "UPCOMING", count: myMusicianUpcoming.length },
     { id: "musician-completed", label: "COMPLETED", count: 0 },
   ];
@@ -1670,11 +1735,11 @@ export default function BoardApp({
               <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
-            {myChecks.length > 0 && myOpenChecks.length === 0 && (
-              <Empty text="You've responded to everything here — leads you're available for wait in Pending until Austin books the meeting." />
+            {myChecks.length > 0 && needsMe.length === 0 && (
+              <Empty text="You've responded to everything here — check Pending or Archive." />
             )}
-            {myOpenChecks.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {sortLeads(myOpenChecks).map((l) => (
+            {needsMe.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(needsMe).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
@@ -1687,6 +1752,18 @@ export default function BoardApp({
             )}
             {myPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myPending).map((l) => (
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
+          </>
+        )}
+
+        {role === "dj" && activeTab === "archive" && (
+          <>
+            {myArchive.length === 0 && (
+              <Empty text="Leads you've passed on land here. Your availability's still visible on each one if that changes." />
+            )}
+            {myArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(myArchive).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
@@ -1733,6 +1810,47 @@ export default function BoardApp({
                 </div>
               );
             })}
+          </>
+        )}
+
+        {role === "musician" && activeTab === "musician-checks" && (
+          <>
+            {!myInstrument && <Empty text="No instrument on file yet — ask Austin to set it in Roster." />}
+            {myInstrument && checking.length === 0 && <Empty text="No open date checks. New ones show up here when a lead mentions your instrument." />}
+            {myInstrument && checking.length > 0 && myMusicianChecks.length === 0 && (
+              <Empty text="No open leads mention your instrument right now." />
+            )}
+            {myMusicianChecks.length > 0 && needsMeMusician.length === 0 && (
+              <Empty text="You've responded to everything here — check Pending or Archive." />
+            )}
+            {needsMeMusician.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(needsMeMusician).map((l) => (
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+            ))}
+          </>
+        )}
+
+        {role === "musician" && activeTab === "musician-pending" && (
+          <>
+            {myMusicianPending.length === 0 && (
+              <Empty text="Leads you're available for land here until Austin books you." />
+            )}
+            {myMusicianPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(myMusicianPending).map((l) => (
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+            ))}
+          </>
+        )}
+
+        {role === "musician" && activeTab === "musician-archive" && (
+          <>
+            {myMusicianArchive.length === 0 && (
+              <Empty text="Leads you've passed on land here. Your availability's still visible on each one if that changes." />
+            )}
+            {myMusicianArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(myMusicianArchive).map((l) => (
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+            ))}
           </>
         )}
 

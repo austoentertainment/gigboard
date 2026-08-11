@@ -317,8 +317,14 @@ create trigger trg_log_availability_response
 --     in date-check, or already assigned to them and in meeting/booked/played
 --     (the meeting case is what lets the Pending tab show a lead once
 --     they're assigned but not yet marked booked)
+--   - musician: same date-check rows as a DJ would see (instrument
+--     relevance is filtered client-side, same as DJ tier), plus any lead
+--     they're already booked on via lead_musicians
 -- has_available lets a DJ's own card show the same green "ready" cue the
--- owner sees, without exposing which other DJs answered.
+-- owner sees, without exposing which other DJs answered. It's scoped to
+-- role = 'dj' specifically — otherwise a musician marking themselves
+-- available on a date check (an unrelated signal) would flip that same
+-- lead to "ready" for every DJ and the owner too.
 
 create view public.leads_feed as
 select
@@ -342,7 +348,8 @@ select
   l.created_at,
   exists (
     select 1 from public.availability_responses ar
-    where ar.lead_id = l.id and ar.response = 'available'
+    join public.users u on u.id = ar.dj_user_id
+    where ar.lead_id = l.id and ar.response = 'available' and u.role = 'dj'
   ) as has_available,
   l.meeting_notes,
   l.travel_zone,
@@ -354,7 +361,7 @@ select
 from public.leads l
 where
   public.is_owner()
-  or (l.status = 'checking' and public.is_dj())
+  or (l.status = 'checking' and (public.is_dj() or public.is_musician()))
   or (l.assigned_dj_id = auth.uid() and l.status in ('meeting', 'booked', 'played'))
   or exists (
     select 1 from public.lead_musicians lm
