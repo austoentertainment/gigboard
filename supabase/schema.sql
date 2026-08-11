@@ -314,7 +314,9 @@ create trigger trg_log_availability_response
 -- visibility + column-hiding rules independent of the leads table policies:
 --   - owner: every column, every row
 --   - dj: no client_name/contact/owner_notes, and only rows that are still
---     in date-check, or already assigned to them and booked/played
+--     in date-check, or already assigned to them and in meeting/booked/played
+--     (the meeting case is what lets the Pending tab show a lead once
+--     they're assigned but not yet marked booked)
 -- has_available lets a DJ's own card show the same green "ready" cue the
 -- owner sees, without exposing which other DJs answered.
 
@@ -353,7 +355,7 @@ from public.leads l
 where
   public.is_owner()
   or (l.status = 'checking' and public.is_dj())
-  or (l.assigned_dj_id = auth.uid() and l.status in ('booked', 'played'))
+  or (l.assigned_dj_id = auth.uid() and l.status in ('meeting', 'booked', 'played'))
   or exists (
     select 1 from public.lead_musicians lm
     where lm.lead_id = l.id and lm.musician_id = auth.uid()
