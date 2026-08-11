@@ -417,7 +417,15 @@ function LeadCard({
   const tier = tierStr(lead);
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
   const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
-  const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName ? assignedDjName : s.label;
+  // "Follow Up" is a per-DJ view, not a stored lead status — the lead itself
+  // is still "ready" (someone's available) until the owner books a meeting,
+  // but a DJ who already said yes needs their own copy to read "waiting on
+  // Austin" rather than the generic "DJ AVAILABLE" call-to-action.
+  const iAmFollowingUp = djView && st === "ready" && myAnswer === "available";
+  const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName
+    ? assignedDjName
+    : iAmFollowingUp ? "FOLLOW UP" : s.label;
+  const statusColor = iAmFollowingUp ? T.violet : s.color;
 
   return (
     <div
@@ -430,7 +438,7 @@ function LeadCard({
       }}
     >
       <div className="lead-date-strip" style={{ width: 190, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18, padding: "14px 12px", flexShrink: 0 }}>
-        <Lamp color={s.color} pulse={st === "checking" || (st === "ready" && !djView)} />
+        <Lamp color={statusColor} pulse={st === "checking" || (st === "ready" && !djView)} />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
           {d.dow && <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.dow.toUpperCase()}</div>}
           <div className="lead-date-line" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, whiteSpace: "nowrap", fontFamily: "var(--font-heading), serif", textAlign: "center" }}>{d.mon} {d.day}</div>
@@ -472,7 +480,7 @@ function LeadCard({
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
-              <Tag color={s.color}>{statusLabel}</Tag>
+              <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
           </div>
@@ -1459,6 +1467,11 @@ export default function BoardApp({
   const tierVisible = (l: LeadRow) => !l.dj_tier || myTiers.includes(l.dj_tier);
   const myChecks = checking.filter(tierVisible);
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
+  // Once I've said I'm available, the lead moves out of Date Checks and
+  // into Pending — it's still just "ready" in the database (any DJ could
+  // still be picked), but from my side there's nothing left to answer.
+  const myPending = myChecks.filter((l) => leadStatus(l) === "ready" && myAvailability[l.id] === "available");
+  const myOpenChecks = myChecks.filter((l) => !(leadStatus(l) === "ready" && myAvailability[l.id] === "available"));
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
@@ -1478,6 +1491,7 @@ export default function BoardApp({
   ];
   const djTabs = [
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
+    { id: "pending", label: "PENDING", count: myPending.length },
     { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
     { id: "completed", label: "COMPLETED", count: 0 },
     { id: "leaderboard", label: "LEADERBOARD", count: 0 },
@@ -1636,8 +1650,23 @@ export default function BoardApp({
               <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
-            {myChecks.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {sortLeads(myChecks).map((l) => (
+            {myChecks.length > 0 && myOpenChecks.length === 0 && (
+              <Empty text="You've responded to everything here — leads you're available for wait in Pending until Austin books the meeting." />
+            )}
+            {myOpenChecks.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(myOpenChecks).map((l) => (
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
+          </>
+        )}
+
+        {role === "dj" && activeTab === "pending" && (
+          <>
+            {myPending.length === 0 && (
+              <Empty text="Leads you've marked yourself available for land here until Austin books the meeting." />
+            )}
+            {myPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {sortLeads(myPending).map((l) => (
               <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
