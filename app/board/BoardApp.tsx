@@ -449,51 +449,55 @@ function LeadCard({
           <>
         <div
           onClick={() => setExpanded((e) => !e)}
-          style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap", cursor: "pointer" }}
+          style={{ display: "flex", flexDirection: "column", gap: 6, cursor: "pointer" }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
-              {djView
-                ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
-                : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
-            </div>
-            {(lead.dj_tier || lead.prod_tier) && (
-              <div className="lead-tier" style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
-                {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
-                {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
-                {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>
+                {djView
+                  ? [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || tier || "Gig"
+                  : [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead"}
               </div>
-            )}
-            <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>
-              {lead.location || "location TBD"}
+              {(lead.dj_tier || lead.prod_tier) && (
+                <div className="lead-tier" style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
+                  {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
+                  {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
+                  {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
+                </div>
+              )}
+              <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>
+                {lead.location || "location TBD"}
+              </div>
             </div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
               <Tag color={s.color}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
-            {totalPayout(lead) > 0 && (
-              <div style={{ fontSize: 20, fontWeight: 900, color: T.text }}>
-                ${totalPayout(lead)}
-              </div>
-            )}
-            {lead.vibo_link && (
-              <a
-                href={lead.vibo_link}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: T.accent, textDecoration: "none" }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- tiny fixed-size icon, not worth next/image's overhead */}
-                <img src="/vibo-icon.png" alt="" style={{ width: 14, height: 14 }} />
-                VIBO
-              </a>
-            )}
           </div>
+          {(totalPayout(lead) > 0 || lead.vibo_link) && (
+            <div className="lead-total-row" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
+              {totalPayout(lead) > 0 && (
+                <div style={{ fontSize: 20, fontWeight: 900, color: T.text }}>
+                  ${totalPayout(lead)}
+                </div>
+              )}
+              {lead.vibo_link && (
+                <a
+                  href={lead.vibo_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: T.accent, textDecoration: "none" }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- tiny fixed-size icon, not worth next/image's overhead */}
+                  <img src="/vibo-icon.png" alt="" style={{ width: 14, height: 14 }} />
+                  VIBO
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         {expanded && djView && (lead.deposit_paid || lead.paid_in_full) && (
