@@ -1255,6 +1255,70 @@ function CompanySettings({
   );
 }
 
+function StatusBanner({ allCaughtUp }: { allCaughtUp: boolean }) {
+  return (
+    <div
+      style={{
+        background: allCaughtUp ? T.green + "1a" : T.accent + "1a",
+        border: `1px solid ${allCaughtUp ? T.green + "55" : T.accent + "55"}`,
+        borderRadius: 10, padding: "14px 18px", fontWeight: 700, fontSize: 14,
+        color: allCaughtUp ? T.green : T.accent,
+      }}
+    >
+      {allCaughtUp ? "You're all caught up. Keep up the good work!" : "You've got Date Checks. Get on top of 'em!"}
+    </div>
+  );
+}
+
+function StatCard({
+  value, label, onClick, urgent,
+}: { value: React.ReactNode; label: string; onClick?: () => void; urgent?: boolean }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        flex: "1 1 140px", minWidth: 140, background: T.surface,
+        border: `1px solid ${urgent ? T.accent + "66" : T.line}`,
+        borderRadius: 10, padding: "16px 18px", cursor: onClick ? "pointer" : "default",
+        display: "flex", flexDirection: "column", gap: 4,
+      }}
+    >
+      <div style={{ fontSize: 32, fontWeight: 900, fontFamily: "var(--font-heading), serif", color: urgent ? T.accent : T.text }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>{label}</div>
+      {onClick && <div style={{ fontSize: 11.5, color: T.accent, marginTop: 4 }}>View →</div>}
+    </div>
+  );
+}
+
+function NextEventCard({
+  lead, subtitle, emptyText, onView,
+}: { lead: LeadRow | undefined; subtitle: string; emptyText: string; onView: () => void }) {
+  if (!lead) return <Empty text={emptyText} />;
+  const d = fmtDate(lead.event_date);
+  const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead";
+  return (
+    <div
+      onClick={onView}
+      style={{
+        display: "flex", background: T.surface, border: `1px solid ${T.accent}`,
+        boxShadow: `0 0 0 3px ${T.accent}22`, borderRadius: 10, overflow: "hidden", cursor: "pointer",
+      }}
+    >
+      <div style={{ width: 120, background: T.raised, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "14px 10px", flexShrink: 0 }}>
+        {d.dow && <div style={{ fontSize: 20, fontWeight: 900, fontFamily: "var(--font-heading), serif" }}>{d.dow.toUpperCase()}</div>}
+        <div style={{ fontSize: 20, fontWeight: 900, fontFamily: "var(--font-heading), serif" }}>{d.mon} {d.day}</div>
+        {d.year && <div style={{ fontSize: 10, color: T.dim }}>{d.year}</div>}
+      </div>
+      <div style={{ flex: 1, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", color: T.accent }}>YOUR NEXT EVENT</div>
+        <div style={{ fontWeight: 800, fontSize: 19, fontFamily: "var(--font-heading), serif" }}>{names}</div>
+        {subtitle && <div style={{ fontSize: 12.5, color: T.dim }}>{subtitle}</div>}
+        <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function BoardApp({
   userId,
   displayName,
@@ -1542,11 +1606,19 @@ export default function BoardApp({
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
   const rankedLeaderboard = [...leaderboard].sort((a, b) => b.booking_total - a.booking_total);
+  const nextDjEvent = [...myUpcoming].sort(byDate)[0];
+  // Same "all bookings ever, any status" total the Leaderboard already
+  // shows for every DJ — reusing it here keeps the two numbers from ever
+  // disagreeing with each other.
+  const myMoneyMade = rankedLeaderboard.find((r) => r.dj_id === userId)?.booking_total ?? 0;
 
   const myMusicianLeadIds = new Set(myMusicianBookings.map((b) => b.lead_id));
   const myMusicianLeads = leads.filter((l) => myMusicianLeadIds.has(l.id));
   const myMusicianUpcoming = myMusicianLeads.filter((l) => !isPastEvent(l));
   const myMusicianCompleted = myMusicianLeads.filter((l) => isPastEvent(l));
+  const nextMusicianEvent = [...myMusicianUpcoming].sort(byDate)[0];
+  const nextMusicianBooking = nextMusicianEvent ? myMusicianBookings.find((b) => b.lead_id === nextMusicianEvent.id) : undefined;
+  const myMusicianMoneyMade = myMusicianBookings.reduce((sum, b) => sum + (b.payout ?? 0), 0);
 
   // A musician's "date check" pool mirrors a DJ's, just filtered by
   // instrument keyword in the upgrades text instead of tier — there's no
@@ -1571,6 +1643,7 @@ export default function BoardApp({
     { id: "settings", label: "SETTINGS", count: 0 },
   ];
   const djTabs = [
+    { id: "home", label: "HOME", count: 0 },
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
     { id: "pending", label: "PENDING", count: myPending.length },
     { id: "archive", label: "ARCHIVE", count: myArchive.length },
@@ -1579,6 +1652,7 @@ export default function BoardApp({
     { id: "leaderboard", label: "LEADERBOARD", count: 0 },
   ];
   const musicianTabs = [
+    { id: "musician-home", label: "HOME", count: 0 },
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
     { id: "musician-pending", label: "PENDING", count: myMusicianPending.length },
     { id: "musician-archive", label: "ARCHIVE", count: myMusicianArchive.length },
@@ -1723,6 +1797,24 @@ export default function BoardApp({
           <CompanySettings settings={companySettings} onSave={saveSettings} />
         )}
 
+        {role === "dj" && activeTab === "home" && (
+          <>
+            <StatusBanner allCaughtUp={needsMe.length === 0} />
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <StatCard value={needsMe.length} label="DATE CHECKS" urgent={needsMe.length > 0} onClick={() => setTab("checks")} />
+              <StatCard value={myUpcoming.length} label="EVENTS BOOKED" onClick={() => setTab("upcoming")} />
+              <StatCard value={myCompleted.length} label="EVENTS COMPLETED" onClick={() => setTab("completed")} />
+              <StatCard value={`$${myMoneyMade}`} label="EARNED FROM BOOKINGS" />
+            </div>
+            <NextEventCard
+              lead={nextDjEvent}
+              subtitle={nextDjEvent ? tierStr(nextDjEvent) : ""}
+              emptyText="No upcoming events booked yet."
+              onView={() => setTab("upcoming")}
+            />
+          </>
+        )}
+
         {role === "dj" && activeTab === "checks" && (
           <>
             {roster.length === 0 && checking.length === 0 && <Empty text="No open date checks yet." />}
@@ -1810,6 +1902,24 @@ export default function BoardApp({
                 </div>
               );
             })}
+          </>
+        )}
+
+        {role === "musician" && activeTab === "musician-home" && (
+          <>
+            <StatusBanner allCaughtUp={needsMeMusician.length === 0} />
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <StatCard value={needsMeMusician.length} label="DATE CHECKS" urgent={needsMeMusician.length > 0} onClick={() => setTab("musician-checks")} />
+              <StatCard value={myMusicianUpcoming.length} label="EVENTS BOOKED" onClick={() => setTab("musician-upcoming")} />
+              <StatCard value={myMusicianCompleted.length} label="EVENTS COMPLETED" onClick={() => setTab("musician-completed")} />
+              <StatCard value={`$${myMusicianMoneyMade}`} label="EARNED FROM BOOKINGS" />
+            </div>
+            <NextEventCard
+              lead={nextMusicianEvent}
+              subtitle={nextMusicianBooking?.services?.join(", ") || ""}
+              emptyText="No upcoming events booked yet."
+              onView={() => setTab("musician-upcoming")}
+            />
           </>
         )}
 
