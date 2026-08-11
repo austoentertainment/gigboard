@@ -622,20 +622,25 @@ function LeadCard({
           )}
           {!djView && st === "meeting" && (
             <Select
-              value=""
+              value={lead.assigned_dj_id || ""}
               onChange={(e) => {
                 const id = e.target.value;
                 if (!id) return;
                 const name = roster.find((d) => d.id === id)?.display_name || "DJ";
-                onUpdateLead(lead.id, { status: "booked", assigned_dj_id: id }, `Booked — ${name} is on it`);
+                onUpdateLead(lead.id, { assigned_dj_id: id }, `${name} assigned — mark booked when confirmed`);
               }}
               style={{ width: "auto", fontSize: 12, padding: "6px 8px" }}
             >
-              <option value="">Book it — assign DJ…</option>
+              <option value="">Assign DJ…</option>
               {(availDjIds.length ? roster.filter((d) => availDjIds.includes(d.id)) : roster).map((d) => (
                 <option key={d.id} value={d.id}>{d.display_name || d.email}{availDjIds.includes(d.id) ? " (available)" : ""}</option>
               ))}
             </Select>
+          )}
+          {!djView && st === "meeting" && lead.assigned_dj_id && (
+            <Btn kind="green" small onClick={() => onUpdateLead(lead.id, { status: "booked" }, `Booked — ${assignedDjName} is on it`)}>
+              MARK BOOKED →
+            </Btn>
           )}
           {!djView && st === "meeting" && (
             <Btn kind="ghost" small onClick={() => onUpdateLead(lead.id, { status: "checking" }, "Back to pipeline")}>
@@ -1470,7 +1475,13 @@ export default function BoardApp({
   // Once I've said I'm available, the lead moves out of Date Checks and
   // into Pending — it's still just "ready" in the database (any DJ could
   // still be picked), but from my side there's nothing left to answer.
-  const myPending = myChecks.filter((l) => leadStatus(l) === "ready" && myAvailability[l.id] === "available");
+  // Once Austin assigns me to a meeting, it stays in Pending too — as
+  // "MEETING BOOKED" — until he marks it Booked, which is what moves it
+  // into Upcoming.
+  const myPending = [
+    ...myChecks.filter((l) => leadStatus(l) === "ready" && myAvailability[l.id] === "available"),
+    ...active.filter((l) => l.assigned_dj_id === userId && leadStatus(l) === "meeting"),
+  ];
   const myOpenChecks = myChecks.filter((l) => !(leadStatus(l) === "ready" && myAvailability[l.id] === "available"));
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
@@ -1663,7 +1674,7 @@ export default function BoardApp({
         {role === "dj" && activeTab === "pending" && (
           <>
             {myPending.length === 0 && (
-              <Empty text="Leads you've marked yourself available for land here until Austin books the meeting." />
+              <Empty text="Leads you're available for, or that Austin has assigned you to, land here until he marks it booked." />
             )}
             {myPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myPending).map((l) => (
