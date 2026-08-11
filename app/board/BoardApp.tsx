@@ -410,6 +410,7 @@ function LeadCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(!!highlighted);
+  const [selectedDjId, setSelectedDjId] = useState(lead.assigned_dj_id || "");
   const st = leadStatus(lead);
   const s = LEAD_STATUS[st];
   const d = fmtDate(lead.event_date);
@@ -621,21 +622,29 @@ function LeadCard({
             </Btn>
           )}
           {!djView && st === "meeting" && (
-            <Select
-              value={lead.assigned_dj_id || ""}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                const name = roster.find((d) => d.id === id)?.display_name || "DJ";
-                onUpdateLead(lead.id, { assigned_dj_id: id }, `${name} assigned — mark booked when confirmed`);
-              }}
-              style={{ width: "auto", fontSize: 12, padding: "6px 8px" }}
-            >
-              <option value="">Assign DJ…</option>
-              {(availDjIds.length ? roster.filter((d) => availDjIds.includes(d.id)) : roster).map((d) => (
-                <option key={d.id} value={d.id}>{d.display_name || d.email}{availDjIds.includes(d.id) ? " (available)" : ""}</option>
-              ))}
-            </Select>
+            <>
+              <Select
+                value={selectedDjId}
+                onChange={(e) => setSelectedDjId(e.target.value)}
+                style={{ width: "auto", fontSize: 12, padding: "6px 8px" }}
+              >
+                <option value="">Assign DJ…</option>
+                {(availDjIds.length ? roster.filter((d) => availDjIds.includes(d.id)) : roster).map((d) => (
+                  <option key={d.id} value={d.id}>{d.display_name || d.email}{availDjIds.includes(d.id) ? " (available)" : ""}</option>
+                ))}
+              </Select>
+              <Btn
+                kind="primary"
+                small
+                disabled={!selectedDjId || selectedDjId === lead.assigned_dj_id}
+                onClick={() => {
+                  const name = roster.find((d) => d.id === selectedDjId)?.display_name || "DJ";
+                  onUpdateLead(lead.id, { assigned_dj_id: selectedDjId }, `${name} assigned — waiting on booking`);
+                }}
+              >
+                DJ ASSIGNED →
+              </Btn>
+            </>
           )}
           {!djView && st === "meeting" && lead.assigned_dj_id && (
             <Btn kind="green" small onClick={() => onUpdateLead(lead.id, { status: "booked" }, `Booked — ${assignedDjName} is on it`)}>
