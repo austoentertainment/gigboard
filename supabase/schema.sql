@@ -322,9 +322,10 @@ create trigger trg_log_availability_response
 --     they're already booked on via lead_musicians
 -- has_available lets a DJ's own card show the same green "ready" cue the
 -- owner sees, without exposing which other DJs answered. It's scoped to
--- role = 'dj' specifically — otherwise a musician marking themselves
--- available on a date check (an unrelated signal) would flip that same
--- lead to "ready" for every DJ and the owner too.
+-- role in ('dj','owner') — the owner can mark himself available on a
+-- Pipeline lead too and counts the same as any DJ, but a musician
+-- marking themselves available (an unrelated signal) must not flip
+-- that same lead to "ready" for every DJ and the owner.
 
 create view public.leads_feed as
 select
@@ -349,7 +350,7 @@ select
   exists (
     select 1 from public.availability_responses ar
     join public.users u on u.id = ar.dj_user_id
-    where ar.lead_id = l.id and ar.response = 'available' and u.role = 'dj'
+    where ar.lead_id = l.id and ar.response = 'available' and u.role in ('dj', 'owner')
   ) as has_available,
   l.meeting_notes,
   l.travel_zone,
