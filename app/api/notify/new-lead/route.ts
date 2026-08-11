@@ -17,7 +17,11 @@ export async function POST(request: Request) {
   const { data: lead } = await admin.from("leads").select("*").eq("id", leadId).single();
   if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
-  await notifyDjsOfNewLead(lead);
+  // Headliner leads go to Austin first — DJs don't get notified (or see
+  // the lead at all, per leads_feed) until he's passed on it himself.
+  if (lead.dj_tier !== "Headliner") {
+    await notifyDjsOfNewLead(lead);
+  }
   await notifyMusiciansOfNewLead(lead);
   return NextResponse.json({ ok: true });
 }

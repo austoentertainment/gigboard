@@ -610,7 +610,7 @@ function LeadCard({
               ✓ APPROVE
             </Btn>
           )}
-          {["checking", "ready"].includes(st) && (
+          {["checking", "ready"].includes(st) && (djView || lead.dj_tier === "Headliner") && (
             <>
               <Btn kind={myAnswer === "available" ? "green" : "primary"} small onClick={() => onSetAvail(lead.id, "available")}>
                 {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
@@ -1502,6 +1502,8 @@ export default function BoardApp({
   };
 
   const setAvail = async (leadId: string, answer: "available" | "pass") => {
+    const lead = leads.find((l) => l.id === leadId);
+    const isMyHeadlinerPass = role === "owner" && answer === "pass" && lead?.dj_tier === "Headliner";
     setMyAvailability((prev) => ({ ...prev, [leadId]: answer }));
     setBusyLeadId(leadId);
     const { error } = await supabase
@@ -1509,15 +1511,19 @@ export default function BoardApp({
       .upsert({ lead_id: leadId, dj_user_id: userId, response: answer }, { onConflict: "lead_id,dj_user_id" });
     setBusyLeadId(null);
     if (error) { ping(friendlyError(error)); return; }
-    ping(answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date");
+    ping(
+      isMyHeadlinerPass
+        ? "Passed — Headliner DJs can see this lead now"
+        : answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date"
+    );
     loadData();
-    if (answer === "available") {
-      fetch("/api/notify/availability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId }),
-      }).catch(() => {});
-    }
+    // Also covers the Headliner-release case: this same endpoint decides
+    // server-side whether an owner's pass should notify qualified DJs.
+    fetch("/api/notify/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leadId }),
+    }).catch(() => {});
   };
 
   const updateLead = async (id: string, patch: LeadUpdate, msg?: string) => {
@@ -1589,6 +1595,14 @@ export default function BoardApp({
   const checking = active.filter((l) => ["checking", "ready"].includes(leadStatus(l)));
   const inMotion = active.filter((l) => ["meeting", "booked"].includes(leadStatus(l)));
   const archived = leads.filter((l) => ["played", "lost"].includes(leadStatus(l)));
+
+  // Headliner leads are hidden from every DJ (see leads_feed) until Austin
+  // has personally passed on them — he gets first refusal. Until he
+  // answers, they're pulled out of the normal pipeline sections into
+  // their own "your call" section up top; once answered, they rejoin the
+  // normal flow like any other lead.
+  const isAwaitingMyHeadlinerCall = (l: LeadRow) => l.dj_tier === "Headliner" && !myAvailability[l.id];
+  const headlinerAwaitingMe = checking.filter(isAwaitingMyHeadlinerCall);
 
   const filteredMotion = motionDjFilter === "all" ? inMotion : inMotion.filter((l) => l.assigned_dj_id === motionDjFilter);
 
@@ -1745,17 +1759,23 @@ export default function BoardApp({
             )}
             {showAdd === "import" && <ImportForm onSave={addLead} onCancel={() => setShowAdd(false)} ping={ping} companySettings={companySettings} />}
             {showAdd === "manual" && <ManualForm onSave={addLead} onCancel={() => setShowAdd(false)} ping={ping} companySettings={companySettings} />}
+            {headlinerAwaitingMe.length > 0 && (
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: TIER_COLORS.Headliner }}>HEADLINER LEADS — YOUR CALL</div>
+            )}
+            {sortLeads(headlinerAwaitingMe).map((l) => (
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
             {checking.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {checking.length === 0 && !showAdd && (
               <Empty text="No leads in date check. Import a HoneyBook inquiry and your roster gets pinged for availability." />
             )}
-            {checking.filter((l) => leadStatus(l) === "ready").length > 0 && (
+            {checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l)).length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
-            {sortLeads(checking.filter((l) => leadStatus(l) === "ready")).map((l) => (
+            {sortLeads(checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l))).map((l) => (
               <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
-            {checking.filter((l) => leadStatus(l) === "checking").length > 0 && (
+            {checking.filter((l) => leadStatus(l) === "checking" && !isAwaitingMyHeadlinerCall(l)).length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {sortLeads(checking.filter((l) => leadStatus(l) === "checking")).map((l) => (
