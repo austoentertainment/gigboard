@@ -667,21 +667,27 @@ function LeadCard({
           )}
           {["checking", "ready"].includes(st) && (djView || lead.dj_tier === "Headliner") && (
             <>
-              <Btn kind={myAnswer === "available" ? "green" : "primary"} small onClick={() => onSetAvail(lead.id, "available")}>
+              <Btn
+                kind={myAnswer === "available" ? "green" : "primary"}
+                small
+                onClick={() => (myAnswer === "available" ? onRetractAvail(lead.id) : onSetAvail(lead.id, "available"))}
+              >
                 {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
               </Btn>
-              <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small onClick={() => onSetAvail(lead.id, "pass")}>
+              <Btn
+                kind={myAnswer === "pass" ? "danger" : "ghost"}
+                small
+                onClick={() => (myAnswer === "pass" ? onRetractAvail(lead.id) : onSetAvail(lead.id, "pass"))}
+              >
                 {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
               </Btn>
-              {myAnswer && (
-                <Btn kind="ghost" small onClick={() => onRetractAvail(lead.id)}>RETRACT</Btn>
-              )}
             </>
           )}
-          {/* Meeting's booked but Austin hasn't picked a DJ yet — the only
-              sensible action here is to undo, not flip to Pass. */}
+          {/* Meeting's booked but Austin hasn't picked a DJ yet — clicking
+              the already-checked button unchecks it, same as above, rather
+              than a separate undo action. */}
           {djView && st === "meeting" && !lead.assigned_dj_id && myAnswer === "available" && (
-            <Btn kind="ghost" small onClick={() => onRetractAvail(lead.id)}>RETRACT AVAILABILITY</Btn>
+            <Btn kind="green" small onClick={() => onRetractAvail(lead.id)}>{"✓ I'M AVAILABLE"}</Btn>
           )}
 
           {!djView && st === "ready" && (
