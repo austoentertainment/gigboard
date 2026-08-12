@@ -316,10 +316,14 @@ create trigger trg_log_availability_response
 --   - dj: no client_name/contact/owner_notes, and only rows that are still
 --     in date-check, or already assigned to them and in meeting/booked/played
 --     (the meeting case is what lets the Pending tab show a lead once
---     they're assigned but not yet marked booked). Headliner-tier leads
---     are the one exception within date-check: Austin gets first refusal,
---     so a DJ can't see one at all until he's personally passed on it
---     (an availability_responses row from an owner-role user).
+--     they're assigned but not yet marked booked), or at the meeting stage
+--     with nobody assigned yet if they'd marked themselves available (the
+--     Pending "awaiting DJ selection" bucket — every interested DJ sees it
+--     until Austin actually picks one, at which point this clause stops
+--     matching for everyone except whoever got picked). Headliner-tier
+--     leads are the one exception within date-check: Austin gets first
+--     refusal, so a DJ can't see one at all until he's personally passed
+--     on it (an availability_responses row from an owner-role user).
 --   - musician: same date-check rows as a DJ would see minus the Headliner
 --     gate (instrument relevance is filtered client-side, same as DJ
 --     tier), plus any lead they're already booked on via lead_musicians
@@ -378,6 +382,13 @@ where
   )
   or (l.status = 'checking' and public.is_musician())
   or (l.assigned_dj_id = auth.uid() and l.status in ('meeting', 'booked', 'played'))
+  or (
+    l.status = 'meeting' and l.assigned_dj_id is null and public.is_dj()
+    and exists (
+      select 1 from public.availability_responses ar
+      where ar.lead_id = l.id and ar.dj_user_id = auth.uid() and ar.response = 'available'
+    )
+  )
   or exists (
     select 1 from public.lead_musicians lm
     where lm.lead_id = l.id and lm.musician_id = auth.uid()

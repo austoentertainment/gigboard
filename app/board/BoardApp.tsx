@@ -27,6 +27,21 @@ const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_
 const isPastEvent = (l: LeadRow) => !!l.event_date && l.event_date < new Date().toISOString().slice(0, 10);
 const bySubmitted = (a: LeadRow, b: LeadRow) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
+// Some sections (the DJ's Date Checks / Pending sub-categories) each need
+// their own independent sort control, rather than sharing the one global
+// sortBy/sortDir the rest of the board uses — plain helpers (not hooks) so
+// they can be used freely after the loading early-return, with the actual
+// per-section state declared once up top alongside the other useState calls.
+type SectionSort = { by: "event" | "submitted"; dir: "asc" | "desc" };
+const toggleSectionSort = (setter: (updater: (prev: SectionSort) => SectionSort) => void) => (next: "event" | "submitted") => {
+  setter((prev) => (prev.by === next ? { by: prev.by, dir: prev.dir === "asc" ? "desc" : "asc" } : { by: next, dir: "asc" }));
+};
+const sortSection = (list: LeadRow[], sort: SectionSort) => {
+  const base = sort.by === "event" ? byDate : bySubmitted;
+  const dirMult = sort.dir === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => base(a, b) * dirMult);
+};
+
 function SortToggle({
   sortBy, sortDir, onChange,
 }: {
@@ -442,19 +457,26 @@ function LeadCard({
   const tier = tierStr(lead);
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
   const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
-  // "Follow Up" is a per-DJ view, not a stored lead status — the lead itself
-  // is still "ready" (someone's available) until the owner books a meeting,
-  // but a DJ who already said yes needs their own copy to read "waiting on
-  // Austin" rather than the generic "DJ AVAILABLE" call-to-action.
-  const iAmFollowingUp = djView && st === "ready" && myAnswer === "available";
+  // These per-DJ labels aren't stored lead statuses — the lead itself is
+  // "ready" or "meeting" for everyone else, but a DJ's own copy needs
+  // wording that reflects where things stand specifically for them.
+  const iAmMarkedAvailable = djView && st === "ready" && myAnswer === "available";
+  const iAmAssignedFollowUp = djView && st === "meeting" && lead.assigned_dj_id === userId;
+  const iAmAwaitingSelection = djView && st === "meeting" && !lead.assigned_dj_id && myAnswer === "available";
   // Same idea for a DJ who's passed — the lead is unchanged for everyone
   // else, but their own Archive copy should read "PASSED", not the
   // generic checking/ready label.
   const iHavePassed = djView && myAnswer === "pass" && ["checking", "ready"].includes(st);
   const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName
     ? assignedDjName
-    : iAmFollowingUp ? "FOLLOW UP" : iHavePassed ? "PASSED" : s.label;
-  const statusColor = iAmFollowingUp ? T.violet : iHavePassed ? T.dim : s.color;
+    : iAmAssignedFollowUp ? "FOLLOW UP"
+    : iAmAwaitingSelection ? "AWAITING DJ SELECTION"
+    : iAmMarkedAvailable ? "AVAILABLE"
+    : iHavePassed ? "PASSED" : s.label;
+  const statusColor = iAmAssignedFollowUp ? T.violet
+    : iAmAwaitingSelection ? T.accent
+    : iAmMarkedAvailable ? T.green
+    : iHavePassed ? T.dim : s.color;
 
   return (
     <div
@@ -1464,6 +1486,10 @@ export default function BoardApp({
   const [sortBy, setSortBy] = useState<"event" | "submitted">(role === "dj" ? "submitted" : "event");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [motionDjFilter, setMotionDjFilter] = useState<string>("all");
+  const [needAvailSort, setNeedAvailSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [markedAvailSort, setMarkedAvailSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [pendingBookingSort, setPendingBookingSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [awaitingSelectionSort, setAwaitingSelectionSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [confirmState, setConfirmState] = useState<{ message: string; confirmLabel: string; resolve: (v: boolean) => void } | null>(null);
   const [busyLeadId, setBusyLeadId] = useState<string | null>(null);
 
@@ -1737,21 +1763,21 @@ export default function BoardApp({
   // "not qualified for anything yet" (an eligibility default).
   const tierVisible = (l: LeadRow) => !l.dj_tier || myTiers.includes(l.dj_tier);
   const myChecks = checking.filter(tierVisible);
-  // Once I've responded, the lead moves out of Date Checks — "available"
-  // goes to Pending, "pass" goes to Archive — leaving only the ones I
-  // haven't answered yet.
+  // Date Checks splits into two: ones I haven't answered yet, and ones
+  // I've already marked myself available for but Austin hasn't booked a
+  // meeting on yet. Passing sends it to Archive instead (still reversible
+  // from there — the available/pass buttons stay on the card).
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
-  // Once Austin assigns me to a meeting, it stays in Pending too — as
-  // "MEETING BOOKED" — until he marks it Booked, which is what moves it
-  // into Upcoming.
-  const myPending = [
-    ...myChecks.filter((l) => myAvailability[l.id] === "available"),
-    ...active.filter((l) => l.assigned_dj_id === userId && leadStatus(l) === "meeting"),
-  ];
-  // A pass is reversible — the card in Archive still shows the
-  // available/pass buttons, so flipping back to available moves it
-  // straight into Pending.
+  const myMarkedAvailable = myChecks.filter((l) => myAvailability[l.id] === "available");
   const myArchive = myChecks.filter((l) => myAvailability[l.id] === "pass");
+  // Pending splits into two: leads Austin has actually assigned to me
+  // (status "meeting", assigned_dj_id = me) waiting on me to follow up and
+  // get it booked, and leads where I said available and Austin has booked
+  // the meeting but hasn't picked which DJ gets it yet — every DJ who said
+  // yes sees those until a specific one is chosen.
+  const myAssignedMeeting = active.filter((l) => l.assigned_dj_id === userId && leadStatus(l) === "meeting");
+  const myAwaitingSelection = active.filter((l) => !l.assigned_dj_id && leadStatus(l) === "meeting" && myAvailability[l.id] === "available");
+  const myPending = [...myAssignedMeeting, ...myAwaitingSelection];
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
@@ -1806,9 +1832,9 @@ export default function BoardApp({
     { id: "home", label: "HOME", count: 0 },
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
     { id: "pending", label: "PENDING", count: myPending.length },
-    { id: "archive", label: "ARCHIVE", count: myArchive.length },
     { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
     { id: "completed", label: "COMPLETED", count: 0 },
+    { id: "archive", label: "ARCHIVE", count: myArchive.length },
     { id: "leaderboard", label: "LEADERBOARD", count: 0 },
   ];
   const musicianTabs = [
@@ -2056,13 +2082,27 @@ export default function BoardApp({
               <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
-            {myChecks.length > 0 && needsMe.length === 0 && (
+            {myChecks.length > 0 && needsMe.length === 0 && myMarkedAvailable.length === 0 && (
               <Empty text="You've responded to everything here — check Pending or Archive." />
             )}
-            {needsMe.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {sortLeads(needsMe).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
-            ))}
+            {needsMe.length > 0 && (
+              <>
+                <SectionLabel>NEED AVAILABILITY</SectionLabel>
+                <SortToggle sortBy={needAvailSort.by} sortDir={needAvailSort.dir} onChange={toggleSectionSort(setNeedAvailSort)} />
+                {sortSection(needsMe, needAvailSort).map((l) => (
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                ))}
+              </>
+            )}
+            {myMarkedAvailable.length > 0 && (
+              <>
+                <SectionLabel>MARKED AVAILABLE</SectionLabel>
+                <SortToggle sortBy={markedAvailSort.by} sortDir={markedAvailSort.dir} onChange={toggleSectionSort(setMarkedAvailSort)} />
+                {sortSection(myMarkedAvailable, markedAvailSort).map((l) => (
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                ))}
+              </>
+            )}
           </>
         )}
 
@@ -2071,10 +2111,24 @@ export default function BoardApp({
             {myPending.length === 0 && (
               <Empty text="Leads you're available for, or that Austin has assigned you to, land here until he marks it booked." />
             )}
-            {myPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {sortLeads(myPending).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
-            ))}
+            {myAssignedMeeting.length > 0 && (
+              <>
+                <SectionLabel>PENDING BOOKING</SectionLabel>
+                <SortToggle sortBy={pendingBookingSort.by} sortDir={pendingBookingSort.dir} onChange={toggleSectionSort(setPendingBookingSort)} />
+                {sortSection(myAssignedMeeting, pendingBookingSort).map((l) => (
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                ))}
+              </>
+            )}
+            {myAwaitingSelection.length > 0 && (
+              <>
+                <SectionLabel>SCHEDULED — AWAITING DJ SELECTION</SectionLabel>
+                <SortToggle sortBy={awaitingSelectionSort.by} sortDir={awaitingSelectionSort.dir} onChange={toggleSectionSort(setAwaitingSelectionSort)} />
+                {sortSection(myAwaitingSelection, awaitingSelectionSort).map((l) => (
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                ))}
+              </>
+            )}
           </>
         )}
 
