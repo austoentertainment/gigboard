@@ -471,16 +471,22 @@ function LeadCard({
   // else, but their own Archive copy should read "PASSED", not the
   // generic checking/ready label.
   const iHavePassed = djView && myAnswer === "pass" && ["checking", "ready"].includes(st);
+  // And for a DJ who hasn't answered yet — this is exactly what puts a
+  // lead in the "Need Availability" section, so it never overlaps with
+  // any of the answered cases above.
+  const iNeedToRespond = djView && ["checking", "ready"].includes(st) && !myAnswer;
   const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName
     ? assignedDjName
     : iAmAssignedFollowUp ? "FOLLOW UP"
     : iAmAwaitingSelection ? "AWAITING DJ SELECTION"
     : iAmMarkedAvailable ? "AVAILABLE"
-    : iHavePassed ? "PASSED" : s.label;
+    : iHavePassed ? "PASSED"
+    : iNeedToRespond ? "DATE CHECK NEEDED" : s.label;
   const statusColor = iAmAssignedFollowUp ? T.violet
     : iAmAwaitingSelection ? T.accent
     : iAmMarkedAvailable ? T.green
-    : iHavePassed ? T.dim : s.color;
+    : iHavePassed ? T.dim
+    : iNeedToRespond ? T.red : s.color;
 
   return (
     <div
