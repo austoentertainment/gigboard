@@ -26,6 +26,7 @@ export interface Database {
           role?: UserRole;
         };
         Update: {
+          email?: string;
           display_name?: string | null;
           role?: UserRole;
         };

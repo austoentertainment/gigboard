@@ -936,6 +936,59 @@ function generatePassword() {
   return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
+function RosterEmailEditor({
+  userId, currentEmail, onChanged, ping,
+}: { userId: string; currentEmail: string; onChanged: () => void; ping: (m: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(currentEmail);
+  const [busy, setBusy] = useState(false);
+
+  if (!editing) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 12, color: T.dim }}>{currentEmail}</span>
+        <button
+          onClick={() => { setValue(currentEmail); setEditing(true); }}
+          style={{ fontFamily: "inherit", background: "none", border: "none", color: T.dim, textDecoration: "underline", fontSize: 11, cursor: "pointer", padding: 0 }}
+        >
+          EDIT
+        </button>
+      </div>
+    );
+  }
+
+  const save = async () => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === currentEmail) { setEditing(false); return; }
+    setBusy(true);
+    const res = await fetch(`/api/roster/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: trimmed }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) { ping(data.error || "Couldn't update the email — try again"); return; }
+    ping("Email updated — they'll log in with the new address next time");
+    setEditing(false);
+    onChanged();
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        type="email"
+        disabled={busy}
+        style={{ fontSize: 12, padding: "4px 8px", width: "auto", minWidth: 190 }}
+      />
+      <Btn small kind="primary" onClick={save} disabled={busy}>{busy ? "SAVING…" : "SAVE"}</Btn>
+      <Btn small onClick={() => setEditing(false)} disabled={busy}>CANCEL</Btn>
+    </div>
+  );
+}
+
 function Roster({
   roster, musicianRoster, rosterProfiles, leads, leadMusicians, onChanged, onSetTiers, onSetNotify, ping, confirm,
 }: {
@@ -1050,7 +1103,7 @@ function Roster({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{dj.display_name || "(pending sign-in)"}</div>
-                <div style={{ fontSize: 12, color: T.dim }}>{dj.email}</div>
+                <RosterEmailEditor userId={dj.id} currentEmail={dj.email} onChanged={onChanged} ping={ping} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 12, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
@@ -1116,7 +1169,7 @@ function Roster({
                   {m.display_name || "(pending sign-in)"}
                   {profile?.instrument && <Tag color={T.blue}>{profile.instrument}</Tag>}
                 </div>
-                <div style={{ fontSize: 12, color: T.dim }}>{m.email}</div>
+                <RosterEmailEditor userId={m.id} currentEmail={m.email} onChanged={onChanged} ping={ping} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 12, color: T.dim, textAlign: "right", whiteSpace: "nowrap" }}>
