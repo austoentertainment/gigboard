@@ -1568,7 +1568,7 @@ export default function BoardApp({
         ? "Passed — Headliner DJs can see this lead now"
         : role === "owner" && answer === "available"
         ? "Marked yourself available — moved to your ready-to-book list"
-        : answer === "available" ? "Marked available — Austin's been signaled" : "Passed on this date"
+        : answer === "available" ? "Marked available — visible on the board now" : "Passed on this date"
     );
     loadData();
     // Also covers the Headliner-release case: this same endpoint decides

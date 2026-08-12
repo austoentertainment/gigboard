@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { notifyOwnersOfAvailability, notifyDjsOfNewLead } from "@/lib/notifications";
+import { notifyDjsOfNewLead } from "@/lib/notifications";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -37,10 +37,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  if (response.response !== "available") {
-    return NextResponse.json({ ok: true, skipped: true });
-  }
-
-  await notifyOwnersOfAvailability(lead, profile);
-  return NextResponse.json({ ok: true });
+  // A DJ (or Austin) marking themselves available no longer emails the
+  // owner — that state is already visible live on the board (the "DJ
+  // AVAILABLE" tag), and emailing Austin every time he marks himself
+  // available on his own Headliner leads was just noise.
+  return NextResponse.json({ ok: true, skipped: true });
 }

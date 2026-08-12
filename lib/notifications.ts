@@ -108,25 +108,3 @@ export async function notifyMusiciansOfNewLead(lead: Lead) {
     });
   }
 }
-
-export async function notifyOwnersOfAvailability(lead: Lead, dj: { display_name: string | null; email: string }) {
-  const admin = createAdminClient();
-  const { data: owners } = await admin.from("users").select("email").eq("role", "owner");
-  if (!owners || owners.length === 0) return;
-
-  const link = `${SITE_URL}/board?lead=${lead.id}`;
-  const d = fmtDate(lead.event_date);
-  const djName = dj.display_name || dj.email;
-
-  for (const owner of owners) {
-    await sendEmail({
-      to: owner.email,
-      subject: `🟢 ${djName} is available for ${d.mon} ${d.day} — contact the lead`,
-      html: `
-        <p><strong>${djName}</strong> just marked themselves available.</p>
-        ${leadSummaryHtml(lead)}
-        <p><a href="${link}">Open the lead →</a></p>
-      `,
-    });
-  }
-}
