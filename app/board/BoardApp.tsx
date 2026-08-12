@@ -2057,6 +2057,14 @@ export default function BoardApp({
 
         {role === "dj" && activeTab === "leaderboard" && (
           <>
+            <a
+              href="/leaderboard-winner.png"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 11.5, fontWeight: 700, color: T.dim, textDecoration: "underline", alignSelf: "flex-start" }}
+            >
+              Gentleman, your winner
+            </a>
             {rankedLeaderboard.length === 0 && <Empty text="Once DJs start booking gigs, standings show up here." />}
             {rankedLeaderboard.map((row, i) => {
               const isMe = row.dj_id === userId;
