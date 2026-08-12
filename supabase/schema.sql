@@ -244,8 +244,10 @@ create policy "availability_insert" on public.availability_responses
 create policy "availability_update" on public.availability_responses
   for update using (dj_user_id = auth.uid() or public.is_owner());
 
+-- A DJ can retract their own available/pass response back to "no
+-- response yet" — same self-service scope as insert/update above.
 create policy "availability_delete" on public.availability_responses
-  for delete using (public.is_owner());
+  for delete using (dj_user_id = auth.uid() or public.is_owner());
 
 -- ============================================================
 -- events (lightweight audit log)
@@ -297,6 +299,11 @@ security definer
 set search_path = public
 as $$
 begin
+  if tg_op = 'DELETE' then
+    insert into public.events (lead_id, actor_user_id, event_type, detail)
+    values (old.lead_id, old.dj_user_id, 'availability_retracted', jsonb_build_object('previous_response', old.response));
+    return old;
+  end if;
   insert into public.events (lead_id, actor_user_id, event_type, detail)
   values (new.lead_id, new.dj_user_id, 'availability_response', jsonb_build_object('response', new.response));
   return new;
@@ -304,7 +311,7 @@ end;
 $$;
 
 create trigger trg_log_availability_response
-  after insert or update on public.availability_responses
+  after insert or update or delete on public.availability_responses
   for each row execute function public.log_availability_response();
 
 -- ============================================================
