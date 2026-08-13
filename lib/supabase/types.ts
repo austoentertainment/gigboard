@@ -279,6 +279,8 @@ export interface Database {
           vibo_link: string | null;
           musician_stage: MusicianStage;
           musician_meeting_date: string | null;
+          assigned_dj_name: string | null;
+          booked_instruments: Instrument[] | null;
         };
         Relationships: [];
       };

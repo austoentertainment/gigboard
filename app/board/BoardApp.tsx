@@ -565,6 +565,11 @@ function LeadCard({
     || lead.musician_stage !== "new"
     || leadMusicians.some((lm) => lm.lead_id === lead.id)
   );
+  // Sourced from leads_feed (not leadMusicians) since a musician's own
+  // booking-select RLS only covers their own row — this reflects every
+  // musician booked on the lead regardless of viewer.
+  const bookedInstrumentsLabel = lead.booked_instruments && lead.booked_instruments.length > 0
+    ? lead.booked_instruments.join(", ") : null;
   // These per-DJ labels aren't stored lead statuses — the lead itself is
   // "ready" or "meeting" for everyone else, but a DJ's own copy needs
   // wording that reflects where things stand specifically for them.
@@ -646,6 +651,7 @@ function LeadCard({
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
               {musicianRelevant && <Tag color={musicianStageDisplay(lead).color}>MUSICIAN: {musicianStageDisplay(lead).label}</Tag>}
+              {djView && ["booked", "played"].includes(st) && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
               <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
@@ -1418,6 +1424,11 @@ function MusicianLeadCard({
     : myAnswer === "pass"
     ? { label: "PASSED", color: T.dim }
     : { label: "DATE CHECK NEEDED", color: T.red };
+  // Sourced from leads_feed, not leadMusicians — a musician's own
+  // lead_musicians SELECT only covers their own row, so this is the only
+  // way to know another musician's instrument is also booked on the lead.
+  const bookedInstrumentsLabel = lead.booked_instruments && lead.booked_instruments.length > 0
+    ? lead.booked_instruments.join(", ") : null;
   return (
     <div
       id={`lead-${lead.id}`}
@@ -1436,7 +1447,11 @@ function MusicianLeadCard({
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
-          <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
+            {booking && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
+            <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
+          </div>
         </div>
         <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
         {booking ? (
@@ -2114,7 +2129,7 @@ export default function BoardApp({
     { id: "musician-home", label: "HOME", count: 0 },
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
     { id: "musician-pending", label: "PENDING BOOKING", count: myMusicianPendingBooking.length },
-    { id: "musician-upcoming", label: "PLANNING", count: myMusicianPlanning.length },
+    { id: "musician-upcoming", label: "UPCOMING", count: myMusicianPlanning.length },
     { id: "musician-completed", label: "COMPLETE", count: 0 },
     { id: "musician-archive", label: "ARCHIVE", count: myMusicianArchive.length },
   ];
