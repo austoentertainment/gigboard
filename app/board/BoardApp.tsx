@@ -630,6 +630,13 @@ function LeadCard({
     || lead.musician_stage !== "new"
     || leadMusicians.some((lm) => lm.lead_id === lead.id)
   );
+  // A musician has no way to see when the client meeting actually happens
+  // — assigning the DJ is the closest real-world signal Austin has for
+  // "the meeting's locked in," so it doubles as the musician-side meeting-
+  // booked trigger too (only when nobody's advanced that stage already).
+  const hasAvailableMusician = musicianRoster.some((m) =>
+    availability.some((r) => r.lead_id === lead.id && r.dj_user_id === m.id && r.response === "available")
+  );
   // These per-DJ labels aren't stored lead statuses — the lead itself is
   // "ready" or "meeting" for everyone else, but a DJ's own copy needs
   // wording that reflects where things stand specifically for them.
@@ -911,7 +918,12 @@ function LeadCard({
                 disabled={!selectedDjId || selectedDjId === lead.assigned_dj_id}
                 onClick={() => {
                   const name = roster.find((d) => d.id === selectedDjId)?.display_name || "DJ";
-                  onUpdateLead(lead.id, { assigned_dj_id: selectedDjId }, `${name} assigned — waiting on booking`);
+                  const patch: LeadUpdate = { assigned_dj_id: selectedDjId };
+                  if (lead.musician_stage === "new" && hasAvailableMusician) {
+                    patch.musician_stage = "pending_booking";
+                    patch.musician_meeting_date = new Date().toISOString().slice(0, 10);
+                  }
+                  onUpdateLead(lead.id, patch, `${name} assigned — waiting on booking`);
                 }}
               >
                 DJ ASSIGNED →
@@ -1489,6 +1501,13 @@ function MusicianLeadCard({
     : myAnswer === "pass"
     ? { label: "PASSED", color: T.dim }
     : { label: "DATE CHECK NEEDED", color: T.red };
+  // The hold deadline matters more to a musician than most other details
+  // on the card — surfaced big and prominent under the tags, not buried
+  // in small dim text lower down.
+  const holdUntilLabel = lead.musician_stage === "pending_booking" && lead.musician_meeting_date
+    ? new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + 14 * 24 * 60 * 60 * 1000)
+      .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
   const [expanded, setExpanded] = useState(!!highlighted);
   return (
     <div
@@ -1509,11 +1528,18 @@ function MusicianLeadCard({
         <div onClick={() => setExpanded((e) => !e)} style={{ display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
             <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
-              {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
-              <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
-              <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
+                {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
+                <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
+                <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
+              </div>
+              {holdUntilLabel && (
+                <div style={{ fontSize: 16, fontWeight: 800, color: T.yellow, fontFamily: "var(--font-heading), serif" }}>
+                  until {holdUntilLabel}
+                </div>
+              )}
             </div>
           </div>
           <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
@@ -1552,11 +1578,6 @@ function MusicianLeadCard({
           </>
         ) : onSetAvail && (
           <>
-            {lead.musician_stage === "pending_booking" && lead.musician_meeting_date && (
-              <div style={{ fontSize: 11.5, color: T.dim }}>
-                Holding date until {new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US")}
-              </div>
-            )}
             <div style={{ display: "flex", gap: 8 }}>
               <Btn kind={myAnswer === "available" ? "green" : "primary"} small
                 onClick={() => (myAnswer === "available" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "available"))}>
