@@ -1489,6 +1489,7 @@ function MusicianLeadCard({
     : myAnswer === "pass"
     ? { label: "PASSED", color: T.dim }
     : { label: "DATE CHECK NEEDED", color: T.red };
+  const [expanded, setExpanded] = useState(!!highlighted);
   return (
     <div
       id={`lead-${lead.id}`}
@@ -1505,15 +1506,29 @@ function MusicianLeadCard({
         {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
-            {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
-            <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
+        <div onClick={() => setExpanded((e) => !e)} style={{ display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
+              {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
+              <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
+              <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
+            </div>
           </div>
+          <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
         </div>
-        <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
+        {expanded && lead.upgrades && (
+          <div style={{ fontSize: 12.5, color: T.accent }}>
+            <span style={{ color: T.dim, fontWeight: 700, letterSpacing: "0.1em", fontSize: 10.5 }}>UPGRADES </span>
+            {lead.upgrades}
+          </div>
+        )}
+        {expanded && lead.client_vision && (
+          <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap", borderLeft: `2px solid ${T.line}`, paddingLeft: 8 }}>
+            {lead.client_vision}
+          </div>
+        )}
         {booking ? (
           <>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
