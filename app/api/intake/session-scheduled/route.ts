@@ -28,9 +28,14 @@ export async function POST(request: Request) {
 
   // Non-greedy up to the tracking-link bracket or the actual sentence
   // boundary — matching on a bare "." would wrongly cut the date inside
-  // the title short (e.g. "9.6.26" truncated to "9").
-  const titleMatch = emailBody.match(/scheduled a session with you in (.+?)(?:\[|\.\s*Please view)/i);
-  const projectTitle = titleMatch?.[1]?.trim();
+  // the title short (e.g. "9.6.26" truncated to "9"). \s+ (not a literal
+  // space) after "in", and [\s\S] instead of "." for the capture, because
+  // Zapier's "Body Plain" field inserts a line break with no space right
+  // where the original tracking-pixel link used to be (the dotAll flag
+  // would also fix this but needs an ES2018+ target).
+  const titleMatch = emailBody.match(/scheduled a session with you in\s+([\s\S]+?)(?:\[|\.\s*Please view)/i);
+  // Collapse in case the title itself wraps across a line break.
+  const projectTitle = titleMatch?.[1]?.trim().replace(/\s+/g, " ");
   if (!projectTitle) {
     return NextResponse.json({ ok: false, reason: "couldn't find a project title in the email body" });
   }
