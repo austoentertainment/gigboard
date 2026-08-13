@@ -343,7 +343,7 @@ function MusicianStageActions({
   onMeetingBooked: (leadId: string) => void;
   onMarkBooked: (leadId: string, musicianId: string | null) => void;
   onMarkLost: (leadId: string) => void;
-  onUndoPlanning: (leadId: string, hasAssignedDj: boolean) => void;
+  onUndoPlanning: (leadId: string, targetStage: "new" | "pending_booking", hasAssignedDj: boolean) => void;
 }) {
   const bookedIds = new Set(leadMusicians.filter((lm) => lm.lead_id === lead.id).map((lm) => lm.musician_id));
   const availableMusicians = musicianRoster.filter((m) =>
@@ -387,10 +387,16 @@ function MusicianStageActions({
   // button only deletes the lead_musicians row — it doesn't know to walk
   // the stage back too). This is the recovery path for that mismatch.
   if (lead.musician_stage === "planning" && bookedIds.size === 0) {
+    const hasAssignedDj = !!lead.assigned_dj_id;
     return (
-      <Btn kind="ghost" small onClick={() => onUndoPlanning(lead.id, !!lead.assigned_dj_id)}>
-        UNDO — BACK TO PENDING BOOKING
-      </Btn>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <Btn kind="ghost" small onClick={() => onUndoPlanning(lead.id, "pending_booking", hasAssignedDj)}>
+          UNDO — BACK TO PENDING BOOKING
+        </Btn>
+        <Btn kind="ghost" small onClick={() => onUndoPlanning(lead.id, "new", hasAssignedDj)}>
+          UNDO — BACK TO NEW
+        </Btn>
+      </div>
     );
   }
 
@@ -583,7 +589,7 @@ function LeadCard({
   onMusicianMeetingBooked: (leadId: string) => void;
   onMarkMusicianBooked: (leadId: string, musicianId: string | null) => void;
   onMarkMusicianLost: (leadId: string) => void;
-  onUndoMusicianPlanning: (leadId: string, hasAssignedDj: boolean) => void;
+  onUndoMusicianPlanning: (leadId: string, targetStage: "new" | "pending_booking", hasAssignedDj: boolean) => void;
   onSetAvail: (leadId: string, answer: "available" | "pass") => void;
   onRetractAvail: (leadId: string) => void;
   onUpdateLead: (id: string, patch: LeadUpdate, msg?: string) => void;
@@ -1912,12 +1918,16 @@ export default function BoardApp({
   // Only rolls the lead's DJ-side status back to checking if no DJ is
   // assigned — if one is, that booking is presumably real and unrelated
   // to the musician mistake being undone here, so it's left alone.
-  const undoMusicianPlanning = async (leadId: string, hasAssignedDj: boolean) => {
-    const patch: LeadUpdate = { musician_stage: "pending_booking" };
+  const undoMusicianPlanning = async (leadId: string, targetStage: "new" | "pending_booking", hasAssignedDj: boolean) => {
+    // Going all the way back to "new" means the meeting itself was
+    // premature too, not just the booking — clear the meeting date along
+    // with it so a stale date doesn't linger on a lead nobody's pitched yet.
+    const patch: LeadUpdate = { musician_stage: targetStage };
+    if (targetStage === "new") patch.musician_meeting_date = null;
     if (!hasAssignedDj) patch.status = "checking";
     const { error } = await supabase.from("leads").update(patch).eq("id", leadId);
     if (error) { ping(friendlyError(error)); return; }
-    ping("Musician stage reverted to Pending Booking");
+    ping(`Musician stage reverted to ${targetStage === "new" ? "New" : "Pending Booking"}`);
     loadData();
   };
 
