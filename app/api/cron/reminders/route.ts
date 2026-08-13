@@ -24,6 +24,12 @@ export async function GET(request: Request) {
   await admin.from("leads").update({ status: "played" }).eq("status", "booked").lt("event_date", today);
   await admin.from("leads").update({ status: "lost" }).in("status", ["checking", "meeting"]).lt("event_date", today);
 
+  // Auto-archive stale Pipeline leads: still unable to get a first meeting
+  // booked 30 days after the lead came in reads as a dead lead, independent
+  // of how far off the event date itself is.
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  await admin.from("leads").update({ status: "lost" }).eq("status", "checking").lt("created_at", thirtyDaysAgo);
+
   // One digest email per DJ, only if they actually have something open —
   // not a per-lead reminder, and no 48-hour staleness window: any date
   // check still sitting unanswered counts every time this runs.
