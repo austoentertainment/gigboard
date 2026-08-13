@@ -1253,12 +1253,13 @@ function Roster({
 }
 
 function MusicianLeadCard({
-  lead, booking, myAnswer, onSetAvail, busy, highlighted,
+  lead, booking, myAnswer, onSetAvail, onRetractAvail, busy, highlighted,
 }: {
   lead: LeadRow;
   booking?: LeadMusicianRow;
   myAnswer?: "available" | "pass";
   onSetAvail?: (leadId: string, answer: "available" | "pass") => void;
+  onRetractAvail?: (leadId: string) => void;
   busy?: boolean;
   highlighted?: boolean;
 }) {
@@ -1268,11 +1269,22 @@ function MusicianLeadCard({
   // Before a booking exists this card is a date check — it just needs a
   // response tag and the available/pass buttons, not services/payout
   // (those aren't decided until Austin actually books the musician).
-  const respondedTag = myAnswer === "available"
+  // Mirrors the DJ card's PENDING BOOKING/SCHEDULED TO MEET WITH AUSTO
+  // states: booked-but-not-closed gets FOLLOW UP, available-but-not-yet-
+  // picked gets MEETING BOOKED. Once it's actually booked/played there's
+  // no tag — that's the Upcoming/Completed tabs' territory.
+  const followUp = !!booking && lead.status === "meeting";
+  const awaitingSelection = !booking && lead.status === "meeting" && myAnswer === "available";
+  const hideTag = !!booking && lead.status !== "meeting";
+  const respondedTag = followUp
+    ? { label: "FOLLOW UP", color: T.violet }
+    : awaitingSelection
+    ? { label: "MEETING BOOKED", color: T.green }
+    : myAnswer === "available"
     ? { label: "AVAILABLE", color: T.green }
     : myAnswer === "pass"
     ? { label: "PASSED", color: T.dim }
-    : { label: "NEEDS RESPONSE", color: T.accent };
+    : { label: "DATE CHECK NEEDED", color: T.red };
   return (
     <div
       id={`lead-${lead.id}`}
@@ -1291,7 +1303,7 @@ function MusicianLeadCard({
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
-          {!booking && <Tag color={respondedTag.color}>{respondedTag.label}</Tag>}
+          {!hideTag && <Tag color={respondedTag.color}>{respondedTag.label}</Tag>}
         </div>
         <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
         {booking ? (
@@ -1308,10 +1320,12 @@ function MusicianLeadCard({
           </>
         ) : onSetAvail && (
           <div style={{ display: "flex", gap: 8 }}>
-            <Btn kind={myAnswer === "available" ? "green" : "primary"} small onClick={() => onSetAvail(lead.id, "available")}>
+            <Btn kind={myAnswer === "available" ? "green" : "primary"} small
+              onClick={() => (myAnswer === "available" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "available"))}>
               {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
             </Btn>
-            <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small onClick={() => onSetAvail(lead.id, "pass")}>
+            <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small
+              onClick={() => (myAnswer === "pass" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "pass"))}>
               {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
             </Btn>
           </div>
@@ -1520,6 +1534,10 @@ export default function BoardApp({
   const [markedAvailSort, setMarkedAvailSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [pendingBookingSort, setPendingBookingSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [awaitingSelectionSort, setAwaitingSelectionSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [needAvailMusicianSort, setNeedAvailMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [markedAvailMusicianSort, setMarkedAvailMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [pendingBookingMusicianSort, setPendingBookingMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
+  const [awaitingSelectionMusicianSort, setAwaitingSelectionMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [confirmState, setConfirmState] = useState<{ message: string; confirmLabel: string; resolve: (v: boolean) => void } | null>(null);
   const [busyLeadId, setBusyLeadId] = useState<string | null>(null);
 
@@ -1859,8 +1877,16 @@ export default function BoardApp({
   // only in Upcoming/Completed, not back in the date-check pool.
   const myMusicianChecks = checking.filter(instrumentVisible).filter((l) => !myMusicianLeadIds.has(l.id));
   const needsMeMusician = myMusicianChecks.filter((l) => !myAvailability[l.id]);
-  const myMusicianPending = myMusicianChecks.filter((l) => myAvailability[l.id] === "available");
+  const myMusicianMarkedAvailable = myMusicianChecks.filter((l) => myAvailability[l.id] === "available");
   const myMusicianArchive = myMusicianChecks.filter((l) => myAvailability[l.id] === "pass");
+  // Pending mirrors the DJ split: leads Austin has actually booked me for
+  // (still at "meeting" stage, deal not closed yet) waiting on follow-up,
+  // and leads where I said available and Austin's booked the meeting but
+  // hasn't picked a musician of my instrument yet — every musician who
+  // said yes for that instrument sees those until one is booked in.
+  const myMusicianAssignedMeeting = myMusicianLeads.filter((l) => leadStatus(l) === "meeting");
+  const myMusicianAwaitingSelection = active.filter((l) => !myMusicianLeadIds.has(l.id) && leadStatus(l) === "meeting" && myAvailability[l.id] === "available");
+  const myMusicianPending = [...myMusicianAssignedMeeting, ...myMusicianAwaitingSelection];
 
   // Austin can pick up leads like any DJ, but his account stays
   // role="owner" — dj_leaderboard and the Roster page both query
@@ -2272,25 +2298,53 @@ export default function BoardApp({
             {myInstrument && checking.length > 0 && myMusicianChecks.length === 0 && (
               <Empty text="No open leads mention your instrument right now." />
             )}
-            {myMusicianChecks.length > 0 && needsMeMusician.length === 0 && (
+            {myMusicianChecks.length > 0 && needsMeMusician.length === 0 && myMusicianMarkedAvailable.length === 0 && (
               <Empty text="You've responded to everything here — check Pending or Archive." />
             )}
-            {needsMeMusician.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {sortLeads(needsMeMusician).map((l) => (
-              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
-            ))}
+            {needsMeMusician.length > 0 && (
+              <>
+                <SectionLabel>NEED AVAILABILITY</SectionLabel>
+                <SortToggle sortBy={needAvailMusicianSort.by} sortDir={needAvailMusicianSort.dir} onChange={toggleSectionSort(setNeedAvailMusicianSort)} />
+                {sortSection(needsMeMusician, needAvailMusicianSort).map((l) => (
+                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+                ))}
+              </>
+            )}
+            {myMusicianMarkedAvailable.length > 0 && (
+              <>
+                <SectionLabel>MARKED AVAILABLE</SectionLabel>
+                <SortToggle sortBy={markedAvailMusicianSort.by} sortDir={markedAvailMusicianSort.dir} onChange={toggleSectionSort(setMarkedAvailMusicianSort)} />
+                {sortSection(myMusicianMarkedAvailable, markedAvailMusicianSort).map((l) => (
+                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+                ))}
+              </>
+            )}
           </>
         )}
 
         {role === "musician" && activeTab === "musician-pending" && (
           <>
             {myMusicianPending.length === 0 && (
-              <Empty text="Leads you're available for land here until Austin books you." />
+              <Empty text="Leads you're available for, or that Austin has booked you for, land here until the deal's closed." />
             )}
-            {myMusicianPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
-            {sortLeads(myMusicianPending).map((l) => (
-              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
-            ))}
+            {myMusicianAssignedMeeting.length > 0 && (
+              <>
+                <SectionLabel>PENDING BOOKING</SectionLabel>
+                <SortToggle sortBy={pendingBookingMusicianSort.by} sortDir={pendingBookingMusicianSort.dir} onChange={toggleSectionSort(setPendingBookingMusicianSort)} />
+                {sortSection(myMusicianAssignedMeeting, pendingBookingMusicianSort).map((l) => (
+                  <MusicianLeadCard key={l.id} lead={l} booking={myMusicianBookings.find((b) => b.lead_id === l.id)} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+                ))}
+              </>
+            )}
+            {myMusicianAwaitingSelection.length > 0 && (
+              <>
+                <SectionLabel>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
+                <SortToggle sortBy={awaitingSelectionMusicianSort.by} sortDir={awaitingSelectionMusicianSort.dir} onChange={toggleSectionSort(setAwaitingSelectionMusicianSort)} />
+                {sortSection(myMusicianAwaitingSelection, awaitingSelectionMusicianSort).map((l) => (
+                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+                ))}
+              </>
+            )}
           </>
         )}
 
@@ -2301,7 +2355,7 @@ export default function BoardApp({
             )}
             {myMusicianArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myMusicianArchive).map((l) => (
-              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
             ))}
           </>
         )}

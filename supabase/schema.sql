@@ -335,7 +335,11 @@ create trigger trg_log_availability_response
 --     on it (an availability_responses row from an owner-role user).
 --   - musician: same date-check rows as a DJ would see minus the Headliner
 --     gate (instrument relevance is filtered client-side, same as DJ
---     tier), plus any lead they're already booked on via lead_musicians
+--     tier), plus any lead they're already booked on via lead_musicians,
+--     plus the same "awaiting selection" carry-through once the lead hits
+--     meeting stage if they'd marked available — scoped per-instrument so
+--     booking a saxophonist doesn't hide a still-open violin slot from
+--     violinists who are also waiting
 -- has_available lets a DJ's own card show the same green "ready" cue the
 -- owner sees, without exposing which other DJs answered. It's scoped to
 -- role in ('dj','owner') — the owner can mark himself available on a
@@ -401,6 +405,25 @@ where
   or exists (
     select 1 from public.lead_musicians lm
     where lm.lead_id = l.id and lm.musician_id = auth.uid()
+  )
+  or (
+    -- Musician mirror of the DJ "awaiting selection" clause above: stays
+    -- visible after the lead moves to meeting stage as long as they marked
+    -- available and nobody with their own instrument has been booked yet.
+    -- Booking a saxophonist shouldn't hide a still-needed violin slot from
+    -- violinists, so the exclusion is scoped to matching instrument, not
+    -- "any musician booked at all."
+    l.status = 'meeting' and public.is_musician()
+    and exists (
+      select 1 from public.availability_responses ar
+      where ar.lead_id = l.id and ar.dj_user_id = auth.uid() and ar.response = 'available'
+    )
+    and not exists (
+      select 1 from public.lead_musicians lm
+      join public.dj_profiles booked on booked.user_id = lm.musician_id
+      join public.dj_profiles me on me.user_id = auth.uid()
+      where lm.lead_id = l.id and booked.instrument = me.instrument
+    )
   );
 
 grant select on public.leads_feed to authenticated;
