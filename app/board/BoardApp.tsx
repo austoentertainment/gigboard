@@ -722,6 +722,7 @@ function LeadCard({
                   {lead.musician_stage === "new" ? "MUSICIAN REQUESTED" : `MUSICIAN: ${musicianStageDisplay(lead).label}`}
                 </Tag>
               )}
+              {!djView && lead.assigned_dj_id && !["booked", "played"].includes(st) && <Tag color={T.violet}>DJ: {assignedDjName}</Tag>}
               {["booked", "played"].includes(st) && <BookedMusicianTags musicians={lead.booked_musicians} />}
               <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
