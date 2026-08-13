@@ -650,8 +650,8 @@ function LeadCard({
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
-              {musicianRelevant && <Tag color={musicianStageDisplay(lead).color}>MUSICIAN: {musicianStageDisplay(lead).label}</Tag>}
-              {djView && ["booked", "played"].includes(st) && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
+              {musicianRelevant && !["booked", "played"].includes(st) && <Tag color={musicianStageDisplay(lead).color}>MUSICIAN: {musicianStageDisplay(lead).label}</Tag>}
+              {["booked", "played"].includes(st) && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
               <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
