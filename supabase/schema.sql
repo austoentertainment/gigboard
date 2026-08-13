@@ -320,8 +320,10 @@ create trigger trg_log_availability_response
 -- Owned by the SQL-editor role (bypasses RLS), so it can apply its own
 -- visibility + column-hiding rules independent of the leads table policies:
 --   - owner: every column, every row
---   - dj: no client_name/contact/owner_notes, and only rows that are still
---     in date-check, or already assigned to them and in meeting/booked/played
+--   - dj: no owner_notes, and no contact info until they're the
+--     assigned_dj_id on the lead (client_name is visible regardless).
+--     Only rows that are still in date-check, or already assigned to
+--     them and in meeting/booked/played
 --     (the meeting case is what lets the Pending tab show a lead once
 --     they're assigned but not yet marked booked), or at the meeting stage
 --     with nobody assigned yet if they'd marked themselves available (the
@@ -345,7 +347,7 @@ create view public.leads_feed as
 select
   l.id,
   l.client_name,
-  case when public.is_owner() then l.contact else null end as contact,
+  case when public.is_owner() or l.assigned_dj_id = auth.uid() then l.contact else null end as contact,
   l.event_date,
   l.location,
   l.dj_tier,

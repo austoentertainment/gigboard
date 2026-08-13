@@ -576,6 +576,12 @@ function LeadCard({
           </div>
         )}
 
+        {expanded && djView && lead.contact && (
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
+            <span>{lead.contact}</span>
+          </div>
+        )}
+
         {expanded && !djView && ["meeting", "booked", "played"].includes(st) && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
             <Btn
