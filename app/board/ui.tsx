@@ -11,6 +11,7 @@ export const T = {
   violet: "#A78BFA",
   blue: "#7C8DB5",
   red: "#F0616D",
+  yellow: "#E5C158",
 };
 
 export const DJ_TIERS = ["Headliner", "Resident", "Associate"] as const;
