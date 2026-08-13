@@ -183,6 +183,12 @@ export async function GET(request: Request) {
       report.push({ row: i + 2, clientName: clientNameRaw, skipped: true, reason: `unrecognized STAGE value: "${stageRaw}"` });
       continue;
     }
+    // Only touching New/Pending Booking/Planning/Complete per Austin —
+    // archived and booked_no_musician leads aren't worth chasing down.
+    if (!["new", "pending_booking", "planning", "complete"].includes(stage)) {
+      report.push({ row: i + 2, clientName: clientNameRaw, stage, skipped: true, reason: "stage excluded from import (archived/booked_no_musician)" });
+      continue;
+    }
 
     const { match, reason, candidateCount } = matchLead(clientNameRaw || "", eventDateRaw || "", (candidates ?? []) as LeadCandidate[]);
     if (!match) {
