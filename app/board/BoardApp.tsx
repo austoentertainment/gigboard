@@ -2140,17 +2140,20 @@ export default function BoardApp({
   const isAwaitingMyHeadlinerCall = (l: LeadRow) => l.dj_tier === "Headliner" && !myAvailability[l.id];
   const headlinerAwaitingMe = checking.filter(isAwaitingMyHeadlinerCall);
 
-  // "Meetings & Booked" split three ways: still-in-meeting-stage, booked
-  // gigs yet to happen, and booked gigs whose date has already passed but
-  // haven't been marked completed yet (the daily cron eventually sweeps
-  // those into Archive as "played", but Past is the real-time view before
-  // that happens).
-  const meetingLeads = inMotion.filter((l) => leadStatus(l) === "meeting");
+  // Meeting-stage leads split by DJ assignment, mirroring the DJ side's
+  // own Pending tab: MEETINGS is meeting-booked but nobody picked yet,
+  // PENDING is a DJ (Austin included) already assigned and just waiting
+  // to close. Then booked gigs split by whether the date's already passed
+  // (the daily cron eventually sweeps those into Archive as "played", but
+  // Past is the real-time view before that happens).
+  const meetingLeads = inMotion.filter((l) => leadStatus(l) === "meeting" && !l.assigned_dj_id);
+  const pendingLeads = inMotion.filter((l) => leadStatus(l) === "meeting" && !!l.assigned_dj_id);
   const bookedLeads = inMotion.filter((l) => leadStatus(l) === "booked");
   const upcomingBooked = bookedLeads.filter((l) => !isPastEvent(l));
   const pastBooked = bookedLeads.filter((l) => isPastEvent(l));
   const djFilter = (list: LeadRow[]) => motionDjFilter === "all" ? list : list.filter((l) => l.assigned_dj_id === motionDjFilter);
   const filteredMeetings = djFilter(meetingLeads);
+  const filteredPending = djFilter(pendingLeads);
   const filteredUpcoming = djFilter(upcomingBooked);
   const filteredPast = djFilter(pastBooked);
 
@@ -2233,6 +2236,7 @@ export default function BoardApp({
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
     { id: "meetings", label: "MEETINGS", count: meetingLeads.length },
+    { id: "pending", label: "PENDING", count: pendingLeads.length },
     { id: "upcoming", label: "UPCOMING", count: upcomingBooked.length },
     { id: "past", label: "PAST", count: pastBooked.length },
     { id: "archive", label: "ARCHIVE", count: archived.length },
@@ -2412,9 +2416,22 @@ export default function BoardApp({
             <DjFilterBar roster={roster} value={motionDjFilter} onChange={setMotionDjFilter} />
             {filteredMeetings.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {filteredMeetings.length === 0 && (
-              <Empty text={motionDjFilter === "all" ? "No meetings booked yet. When a date check comes back green, book the meeting and it moves here." : "No meetings booked for this DJ yet."} />
+              <Empty text={motionDjFilter === "all" ? "No meetings booked yet. When a date check comes back green, book the meeting and it moves here." : "No unassigned meetings for this DJ yet."} />
             )}
             {sortLeads(filteredMeetings).map((l) => (
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+            ))}
+          </>
+        )}
+
+        {role === "owner" && activeTab === "pending" && (
+          <>
+            <DjFilterBar roster={roster} value={motionDjFilter} onChange={setMotionDjFilter} />
+            {filteredPending.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {filteredPending.length === 0 && (
+              <Empty text={motionDjFilter === "all" ? "Once a DJ is assigned to a meeting-stage lead, it lands here until it's marked booked." : "No pending leads assigned to this DJ yet."} />
+            )}
+            {sortLeads(filteredPending).map((l) => (
               <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
