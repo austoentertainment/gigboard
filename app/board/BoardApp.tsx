@@ -2023,7 +2023,7 @@ export default function BoardApp({
   // Leaderboard and DJ management just by never being a "real" DJ
   // roster member. This only adds him to the assign-DJ dropdown's
   // options, client-side.
-  const assignableRoster: RosterUser[] = role === "owner" ? [...roster, { id: userId, email: displayName, display_name: `${displayName} (You)` }] : roster;
+  const assignableRoster: RosterUser[] = role === "owner" ? [...roster, { id: userId, email: displayName, display_name: displayName }] : roster;
 
   const ownerTabs = [
     { id: "pipeline", label: "PIPELINE", count: checking.length },
