@@ -40,6 +40,15 @@ export const LEAD_STATUS: Record<string, { label: string; color: string }> = {
   lost: { label: "LOST", color: T.red },
 };
 
+export const MUSICIAN_STAGE: Record<string, { label: string; color: string }> = {
+  new: { label: "NEW", color: T.accent },
+  pending_booking: { label: "PENDING BOOKING", color: T.violet },
+  planning: { label: "PLANNING", color: T.green },
+  booked_no_musician: { label: "BOOKED, NO MUSICIAN", color: T.dim },
+  archived: { label: "ARCHIVED", color: T.red },
+  complete: { label: "COMPLETE", color: T.blue },
+};
+
 export function fmtDate(iso: string | null) {
   if (!iso) return { day: "—", mon: "TBD", dow: "", year: "" };
   const d = new Date(iso + "T12:00:00");

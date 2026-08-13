@@ -6,6 +6,7 @@ export type LeadSource = "honeybook" | "manual";
 export type AvailabilityAnswer = "available" | "pass";
 export type UserRole = "owner" | "dj" | "musician";
 export type Instrument = "Saxophone" | "Violin";
+export type MusicianStage = "new" | "pending_booking" | "planning" | "booked_no_musician" | "archived" | "complete";
 export type MusicianService = "Ceremony" | "Cocktail Hour" | "Dinner" | "Formalities" | "2 Hours of Dancing";
 
 export interface Database {
@@ -106,6 +107,8 @@ export interface Database {
           needs_review: boolean;
           created_at: string;
           vibo_link: string | null;
+          musician_stage: MusicianStage;
+          musician_meeting_date: string | null;
         };
         Insert: {
           client_name?: string | null;
@@ -131,6 +134,8 @@ export interface Database {
           honeybook_ref?: string | null;
           needs_review?: boolean;
           vibo_link?: string | null;
+          musician_stage?: MusicianStage;
+          musician_meeting_date?: string | null;
         };
         Update: {
           client_name?: string | null;
@@ -154,6 +159,8 @@ export interface Database {
           assigned_dj_id?: string | null;
           needs_review?: boolean;
           vibo_link?: string | null;
+          musician_stage?: MusicianStage;
+          musician_meeting_date?: string | null;
         };
         Relationships: [];
       };
@@ -264,6 +271,8 @@ export interface Database {
           created_at: string;
           has_available: boolean;
           vibo_link: string | null;
+          musician_stage: MusicianStage;
+          musician_meeting_date: string | null;
         };
         Relationships: [];
       };

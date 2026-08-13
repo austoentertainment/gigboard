@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService } from "@/lib/supabase/types";
+import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService, MusicianStage } from "@/lib/supabase/types";
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import { INSTRUMENT_KEYWORD } from "@/lib/instruments";
 import {
-  T, DJ_TIERS, LEAD_STATUS, fmtDate,
+  T, DJ_TIERS, LEAD_STATUS, MUSICIAN_STAGE, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
   MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES, TIER_COLORS,
 } from "./ui";
@@ -287,6 +287,61 @@ function LeadHistory({
   );
 }
 
+const MUSICIAN_STAGE_OPTIONS: MusicianStage[] = ["new", "pending_booking", "planning", "booked_no_musician", "archived", "complete"];
+
+function MusicianStageEditor({
+  lead, onSave,
+}: {
+  lead: LeadRow;
+  onSave: (id: string, patch: { musician_stage?: MusicianStage; musician_meeting_date?: string | null }, msg?: string) => void;
+}) {
+  const [meetingDate, setMeetingDate] = useState(lead.musician_meeting_date || "");
+  const [dirty, setDirty] = useState(false);
+  // 14-day hold is a display-only deadline (no auto-expiry) — computed
+  // from the meeting date rather than stored separately so it can never
+  // drift out of sync with it.
+  const holdUntil = lead.musician_meeting_date
+    ? new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US")
+    : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>MUSICIAN STAGE</span>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {MUSICIAN_STAGE_OPTIONS.map((stage) => {
+          const active = lead.musician_stage === stage;
+          const meta = MUSICIAN_STAGE[stage];
+          return (
+            <button
+              key={stage}
+              onClick={() => onSave(lead.id, { musician_stage: stage }, `Musician stage: ${meta.label}`)}
+              style={{
+                fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                background: active ? meta.color : "transparent",
+                color: active ? "#06210F" : T.dim,
+                border: `1px solid ${active ? meta.color : T.line}`,
+              }}
+            >
+              {meta.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>MEETING DATE</span>
+        <Input type="date" value={meetingDate} onChange={(e) => { setMeetingDate(e.target.value); setDirty(true); }} style={{ width: 150 }} />
+        {dirty && (
+          <Btn small kind="primary" onClick={() => { onSave(lead.id, { musician_meeting_date: meetingDate || null }, "Musician meeting date updated"); setDirty(false); }}>
+            SAVE
+          </Btn>
+        )}
+        {holdUntil && <span style={{ fontSize: 11.5, color: T.dim }}>Holding date until {holdUntil}</span>}
+      </div>
+    </div>
+  );
+}
+
 function MusicianBookingRow({
   musician, instrument, booking, onUnbook, onUpdate,
 }: {
@@ -461,6 +516,16 @@ function LeadCard({
   const tier = tierStr(lead);
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
   const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
+  // Gates the musician stage/booking controls: relevant if the upgrades
+  // text mentions an instrument, the owner's already advanced the stage
+  // by hand, or a musician's already booked on it — independent of the
+  // DJ-side status, since a musician add-on can be pursued (or fall
+  // through) at any point in the DJ pipeline.
+  const musicianRelevant = !djView && (
+    Object.values(INSTRUMENT_KEYWORD).some((kw) => (lead.upgrades || "").toLowerCase().includes(kw))
+    || lead.musician_stage !== "new"
+    || leadMusicians.some((lm) => lm.lead_id === lead.id)
+  );
   // These per-DJ labels aren't stored lead statuses — the lead itself is
   // "ready" or "meeting" for everyone else, but a DJ's own copy needs
   // wording that reflects where things stand specifically for them.
@@ -541,6 +606,7 @@ function LeadCard({
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
+              {musicianRelevant && <Tag color={MUSICIAN_STAGE[lead.musician_stage].color}>MUSICIAN: {MUSICIAN_STAGE[lead.musician_stage].label}</Tag>}
               <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
@@ -649,7 +715,11 @@ function LeadCard({
 
         {expanded && ["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
 
-        {expanded && !djView && ["meeting", "booked", "played"].includes(st) && (
+        {expanded && musicianRelevant && (
+          <MusicianStageEditor lead={lead} onSave={onUpdateLead} />
+        )}
+
+        {expanded && musicianRelevant && (
           <MusicianBooking
             leadId={lead.id}
             musicianRoster={musicianRoster}
@@ -1042,7 +1112,7 @@ function RosterEmailEditor({
 }
 
 function Roster({
-  roster, musicianRoster, rosterProfiles, leads, leadMusicians, onChanged, onSetTiers, onSetNotify, ping, confirm,
+  roster, musicianRoster, rosterProfiles, leads, leadMusicians, onChanged, onSetTiers, onSetNotify, onSetInstrument, ping, confirm,
 }: {
   roster: RosterUser[];
   musicianRoster: RosterUser[];
@@ -1052,6 +1122,7 @@ function Roster({
   onChanged: () => void;
   onSetTiers: (djId: string, tiers: DjTier[]) => void;
   onSetNotify: (djId: string, enabled: boolean) => void;
+  onSetInstrument: (musicianId: string, instrument: Instrument) => void;
   ping: (m: string) => void;
   confirm: (message: string, confirmLabel: string) => Promise<boolean>;
 }) {
@@ -1219,7 +1290,6 @@ function Roster({
               <div>
                 <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
                   {m.display_name || "(pending sign-in)"}
-                  {profile?.instrument && <Tag color={T.blue}>{profile.instrument}</Tag>}
                 </div>
                 <RosterEmailEditor userId={m.id} currentEmail={m.email} onChanged={onChanged} ping={ping} />
               </div>
@@ -1229,6 +1299,27 @@ function Roster({
                 </div>
                 <Btn kind="danger" small onClick={() => remove(m.id, m.display_name || m.email)}>REMOVE</Btn>
               </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>INSTRUMENT</span>
+              {MUSICIAN_INSTRUMENTS.map((i) => {
+                const active = profile?.instrument === i;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => onSetInstrument(m.id, i)}
+                    style={{
+                      fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+                      padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                      background: active ? T.teal : "transparent",
+                      color: active ? T.text : T.dim,
+                      border: `1px solid ${active ? T.teal : T.line}`,
+                    }}
+                  >
+                    {i}
+                  </button>
+                );
+              })}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>NOTIFICATION EMAILS</span>
@@ -1269,17 +1360,11 @@ function MusicianLeadCard({
   // Before a booking exists this card is a date check — it just needs a
   // response tag and the available/pass buttons, not services/payout
   // (those aren't decided until Austin actually books the musician).
-  // Mirrors the DJ card's PENDING BOOKING/SCHEDULED TO MEET WITH AUSTO
-  // states: booked-but-not-closed gets FOLLOW UP, available-but-not-yet-
-  // picked gets MEETING BOOKED. Once it's actually booked/played there's
-  // no tag — that's the Upcoming/Completed tabs' territory.
-  const followUp = !!booking && lead.status === "meeting";
-  const awaitingSelection = !booking && lead.status === "meeting" && myAnswer === "available";
-  const hideTag = !!booking && lead.status !== "meeting";
-  const respondedTag = followUp
-    ? { label: "FOLLOW UP", color: T.violet }
-    : awaitingSelection
-    ? { label: "MEETING BOOKED", color: T.green }
+  // Once the owner's advanced musician_stage past "new" (pending_booking,
+  // planning, etc.), that stage is the more meaningful tag than my own
+  // available/pass response.
+  const respondedTag = lead.musician_stage !== "new"
+    ? MUSICIAN_STAGE[lead.musician_stage]
     : myAnswer === "available"
     ? { label: "AVAILABLE", color: T.green }
     : myAnswer === "pass"
@@ -1303,7 +1388,7 @@ function MusicianLeadCard({
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
-          {!hideTag && <Tag color={respondedTag.color}>{respondedTag.label}</Tag>}
+          <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
         </div>
         <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
         {booking ? (
@@ -1319,16 +1404,23 @@ function MusicianLeadCard({
             </div>
           </>
         ) : onSetAvail && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <Btn kind={myAnswer === "available" ? "green" : "primary"} small
-              onClick={() => (myAnswer === "available" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "available"))}>
-              {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
-            </Btn>
-            <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small
-              onClick={() => (myAnswer === "pass" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "pass"))}>
-              {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
-            </Btn>
-          </div>
+          <>
+            {lead.musician_stage === "pending_booking" && lead.musician_meeting_date && (
+              <div style={{ fontSize: 11.5, color: T.dim }}>
+                Holding date until {new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US")}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn kind={myAnswer === "available" ? "green" : "primary"} small
+                onClick={() => (myAnswer === "available" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "available"))}>
+                {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
+              </Btn>
+              <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small
+                onClick={() => (myAnswer === "pass" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "pass"))}>
+                {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
+              </Btn>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -1537,7 +1629,6 @@ export default function BoardApp({
   const [needAvailMusicianSort, setNeedAvailMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [markedAvailMusicianSort, setMarkedAvailMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [pendingBookingMusicianSort, setPendingBookingMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
-  const [awaitingSelectionMusicianSort, setAwaitingSelectionMusicianSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [confirmState, setConfirmState] = useState<{ message: string; confirmLabel: string; resolve: (v: boolean) => void } | null>(null);
   const [busyLeadId, setBusyLeadId] = useState<string | null>(null);
 
@@ -1654,6 +1745,13 @@ export default function BoardApp({
     const { error } = await supabase.from("dj_profiles").update({ notify_email: enabled }).eq("user_id", djId);
     if (error) { ping(friendlyError(error)); return; }
     ping(enabled ? "Emails turned on for this DJ" : "Emails turned off for this DJ");
+    loadData();
+  };
+
+  const saveMusicianInstrument = async (musicianId: string, instrument: Instrument) => {
+    const { error } = await supabase.from("dj_profiles").update({ instrument }).eq("user_id", musicianId);
+    if (error) { ping(friendlyError(error)); return; }
+    ping(`Instrument set to ${instrument}`);
     loadData();
   };
 
@@ -1859,34 +1957,40 @@ export default function BoardApp({
 
   const myMusicianLeadIds = new Set(myMusicianBookings.map((b) => b.lead_id));
   const myMusicianLeads = leads.filter((l) => myMusicianLeadIds.has(l.id));
-  const myMusicianUpcoming = myMusicianLeads.filter((l) => !isPastEvent(l));
-  const myMusicianCompleted = myMusicianLeads.filter((l) => isPastEvent(l));
-  const nextMusicianEvent = [...myMusicianUpcoming].sort(byDate)[0];
+  // Planning/Complete mirror musician_stage directly — booking a musician
+  // auto-advances the lead to 'planning' (see trg_advance_musician_stage),
+  // and the daily cron flips it to 'complete' once the event's passed.
+  const myMusicianPlanning = myMusicianLeads.filter((l) => !isPastEvent(l));
+  const myMusicianComplete = myMusicianLeads.filter((l) => isPastEvent(l));
+  const nextMusicianEvent = [...myMusicianPlanning].sort(byDate)[0];
   const nextMusicianBooking = nextMusicianEvent ? myMusicianBookings.find((b) => b.lead_id === nextMusicianEvent.id) : undefined;
   const myMusicianMoneyMade = myMusicianBookings.reduce((sum, b) => sum + (b.payout ?? 0), 0);
 
-  // A musician's "date check" pool mirrors a DJ's, just filtered by
-  // instrument keyword in the upgrades text instead of tier — there's no
-  // per-musician visibility list to configure, so no instrument means no
-  // matches rather than "show everything."
+  // A musician's date-check pool is filtered by instrument keyword in the
+  // upgrades text — there's no per-musician visibility list to configure,
+  // so no instrument means no matches rather than "show everything."
   const instrumentKeyword = myInstrument ? INSTRUMENT_KEYWORD[myInstrument] : null;
   const instrumentVisible = (l: LeadRow) => !!instrumentKeyword && (l.upgrades || "").toLowerCase().includes(instrumentKeyword);
-  // Austin can book a musician directly at any pipeline stage, independent
-  // of the DJ-side status — so a lead can already be an Upcoming booking
-  // while still sitting at "checking" overall. Once booked, it belongs
-  // only in Upcoming/Completed, not back in the date-check pool.
-  const myMusicianChecks = checking.filter(instrumentVisible).filter((l) => !myMusicianLeadIds.has(l.id));
+  // Every tab below keys off musician_stage rather than the DJ-side
+  // status — the two pipelines run independently (see leads_feed and the
+  // musician_stage column comment in schema.sql).
+  const newMusicianLeads = leads.filter((l) => l.musician_stage === "new");
+  const myMusicianChecks = newMusicianLeads.filter(instrumentVisible).filter((l) => !myMusicianLeadIds.has(l.id));
   const needsMeMusician = myMusicianChecks.filter((l) => !myAvailability[l.id]);
   const myMusicianMarkedAvailable = myMusicianChecks.filter((l) => myAvailability[l.id] === "available");
-  const myMusicianArchive = myMusicianChecks.filter((l) => myAvailability[l.id] === "pass");
-  // Pending mirrors the DJ split: leads Austin has actually booked me for
-  // (still at "meeting" stage, deal not closed yet) waiting on follow-up,
-  // and leads where I said available and Austin's booked the meeting but
-  // hasn't picked a musician of my instrument yet — every musician who
-  // said yes for that instrument sees those until one is booked in.
-  const myMusicianAssignedMeeting = myMusicianLeads.filter((l) => leadStatus(l) === "meeting");
-  const myMusicianAwaitingSelection = active.filter((l) => !myMusicianLeadIds.has(l.id) && leadStatus(l) === "meeting" && myAvailability[l.id] === "available");
-  const myMusicianPending = [...myMusicianAssignedMeeting, ...myMusicianAwaitingSelection];
+  // Pending Booking: Austin's had the intro call and the 14-day hold is
+  // on. Stays visible to every musician of that instrument who said
+  // available until it either books (drops into Planning) or the owner
+  // moves it on.
+  const myMusicianPendingBooking = leads.filter((l) =>
+    l.musician_stage === "pending_booking" && instrumentVisible(l) && myAvailability[l.id] === "available" && !myMusicianLeadIds.has(l.id)
+  );
+  // Archive: dead ends — the owner called it archived or booked-with-no-
+  // musician, or I personally passed while it was still fresh.
+  const myMusicianArchive = leads.filter((l) =>
+    instrumentVisible(l) && !myMusicianLeadIds.has(l.id)
+    && (["archived", "booked_no_musician"].includes(l.musician_stage) || myAvailability[l.id] === "pass")
+  );
 
   // Austin can pick up leads like any DJ, but his account stays
   // role="owner" — dj_leaderboard and the Roster page both query
@@ -1917,10 +2021,10 @@ export default function BoardApp({
   const musicianTabs = [
     { id: "musician-home", label: "HOME", count: 0 },
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
-    { id: "musician-pending", label: "PENDING", count: myMusicianPending.length },
+    { id: "musician-pending", label: "PENDING BOOKING", count: myMusicianPendingBooking.length },
+    { id: "musician-upcoming", label: "PLANNING", count: myMusicianPlanning.length },
+    { id: "musician-completed", label: "COMPLETE", count: 0 },
     { id: "musician-archive", label: "ARCHIVE", count: myMusicianArchive.length },
-    { id: "musician-upcoming", label: "UPCOMING", count: myMusicianUpcoming.length },
-    { id: "musician-completed", label: "COMPLETED", count: 0 },
   ];
   const tabs = role === "owner" ? ownerTabs : role === "dj" ? djTabs : musicianTabs;
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
@@ -2122,7 +2226,7 @@ export default function BoardApp({
         )}
 
         {role === "owner" && activeTab === "roster" && (
-          <Roster roster={roster} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leads={leads} leadMusicians={leadMusicians} onChanged={loadData} onSetTiers={saveDjTiers} onSetNotify={saveDjNotify} ping={ping} confirm={confirmAction} />
+          <Roster roster={roster} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leads={leads} leadMusicians={leadMusicians} onChanged={loadData} onSetTiers={saveDjTiers} onSetNotify={saveDjNotify} onSetInstrument={saveMusicianInstrument} ping={ping} confirm={confirmAction} />
         )}
 
         {role === "owner" && activeTab === "settings" && companySettings && (
@@ -2278,8 +2382,8 @@ export default function BoardApp({
             <StatusBanner allCaughtUp={needsMeMusician.length === 0} />
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <StatCard value={needsMeMusician.length} label="DATE CHECKS" urgent={needsMeMusician.length > 0} onClick={() => setTab("musician-checks")} />
-              <StatCard value={myMusicianUpcoming.length} label="EVENTS BOOKED" onClick={() => setTab("musician-upcoming")} />
-              <StatCard value={myMusicianCompleted.length} label="EVENTS COMPLETED" onClick={() => setTab("musician-completed")} />
+              <StatCard value={myMusicianPlanning.length} label="EVENTS BOOKED" onClick={() => setTab("musician-upcoming")} />
+              <StatCard value={myMusicianComplete.length} label="EVENTS COMPLETED" onClick={() => setTab("musician-completed")} />
               <StatCard value={`$${myMusicianMoneyMade}`} label="EARNED FROM BOOKINGS" />
             </div>
             <NextEventCard
@@ -2294,12 +2398,12 @@ export default function BoardApp({
         {role === "musician" && activeTab === "musician-checks" && (
           <>
             {!myInstrument && <Empty text="No instrument on file yet — ask Austin to set it in Roster." />}
-            {myInstrument && checking.length === 0 && <Empty text="No open date checks. New ones show up here when a lead mentions your instrument." />}
-            {myInstrument && checking.length > 0 && myMusicianChecks.length === 0 && (
+            {myInstrument && newMusicianLeads.length === 0 && <Empty text="No open date checks. New ones show up here when a lead mentions your instrument." />}
+            {myInstrument && newMusicianLeads.length > 0 && myMusicianChecks.length === 0 && (
               <Empty text="No open leads mention your instrument right now." />
             )}
             {myMusicianChecks.length > 0 && needsMeMusician.length === 0 && myMusicianMarkedAvailable.length === 0 && (
-              <Empty text="You've responded to everything here — check Pending or Archive." />
+              <Empty text="You've responded to everything here — check Pending Booking or Archive." />
             )}
             {needsMeMusician.length > 0 && (
               <>
@@ -2324,34 +2428,20 @@ export default function BoardApp({
 
         {role === "musician" && activeTab === "musician-pending" && (
           <>
-            {myMusicianPending.length === 0 && (
-              <Empty text="Leads you're available for, or that Austin has booked you for, land here until the deal's closed." />
+            {myMusicianPendingBooking.length === 0 && (
+              <Empty text="Leads where Austin's had the intro call and the hold is on land here until it books or falls through." />
             )}
-            {myMusicianAssignedMeeting.length > 0 && (
-              <>
-                <SectionLabel>PENDING BOOKING</SectionLabel>
-                <SortToggle sortBy={pendingBookingMusicianSort.by} sortDir={pendingBookingMusicianSort.dir} onChange={toggleSectionSort(setPendingBookingMusicianSort)} />
-                {sortSection(myMusicianAssignedMeeting, pendingBookingMusicianSort).map((l) => (
-                  <MusicianLeadCard key={l.id} lead={l} booking={myMusicianBookings.find((b) => b.lead_id === l.id)} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
-                ))}
-              </>
-            )}
-            {myMusicianAwaitingSelection.length > 0 && (
-              <>
-                <SectionLabel>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
-                <SortToggle sortBy={awaitingSelectionMusicianSort.by} sortDir={awaitingSelectionMusicianSort.dir} onChange={toggleSectionSort(setAwaitingSelectionMusicianSort)} />
-                {sortSection(myMusicianAwaitingSelection, awaitingSelectionMusicianSort).map((l) => (
-                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
-                ))}
-              </>
-            )}
+            {myMusicianPendingBooking.length > 0 && <SortToggle sortBy={pendingBookingMusicianSort.by} sortDir={pendingBookingMusicianSort.dir} onChange={toggleSectionSort(setPendingBookingMusicianSort)} />}
+            {sortSection(myMusicianPendingBooking, pendingBookingMusicianSort).map((l) => (
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+            ))}
           </>
         )}
 
         {role === "musician" && activeTab === "musician-archive" && (
           <>
             {myMusicianArchive.length === 0 && (
-              <Empty text="Leads you've passed on land here. Your availability's still visible on each one if that changes." />
+              <Empty text="Leads that went cold — whether Austin closed it out or you passed — land here. Your response is still visible if anything changes." />
             )}
             {myMusicianArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myMusicianArchive).map((l) => (
@@ -2362,8 +2452,8 @@ export default function BoardApp({
 
         {role === "musician" && activeTab === "musician-upcoming" && (
           <>
-            {myMusicianUpcoming.length === 0 && <Empty text="No gigs booked yet — Austin will add you to a lead once a client books live music." />}
-            {myMusicianUpcoming.sort(byDate).map((l) => {
+            {myMusicianPlanning.length === 0 && <Empty text="No gigs booked yet — Austin will add you to a lead once a client books live music." />}
+            {myMusicianPlanning.sort(byDate).map((l) => {
               const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
               return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
             })}
@@ -2372,8 +2462,8 @@ export default function BoardApp({
 
         {role === "musician" && activeTab === "musician-completed" && (
           <>
-            {myMusicianCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed." />}
-            {myMusicianCompleted.sort((a, b) => byDate(b, a)).map((l) => {
+            {myMusicianComplete.length === 0 && <Empty text="Completed gigs show up here once the event has passed." />}
+            {myMusicianComplete.sort((a, b) => byDate(b, a)).map((l) => {
               const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
               return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
             })}

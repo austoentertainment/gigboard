@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { fmtDate } from "@/app/board/ui";
+import { INSTRUMENT_KEYWORD } from "@/lib/instruments";
 import type { DjTier } from "@/lib/supabase/types";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoentertainment.com";
@@ -29,6 +30,36 @@ export async function GET(request: Request) {
   // of how far off the event date itself is.
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   await admin.from("leads").update({ status: "lost" }).eq("status", "checking").lt("created_at", thirtyDaysAgo);
+
+  // Musician stage auto-advance: booking a musician already flips the
+  // stage to 'planning' via a DB trigger (trg_advance_musician_stage), so
+  // the two states left to derive here are past events that got a
+  // musician booked (complete), and DJ-booked leads where the musician
+  // add-on interest never converted (booked_no_musician) — new/pending_
+  // booking/archived stay owner-controlled since they reflect real-world
+  // events (the intro call, going cold) nothing else can infer.
+  await admin.from("leads").update({ musician_stage: "complete" }).eq("musician_stage", "planning").lt("event_date", today);
+
+  const { data: bookedNoMusicianCandidates } = await admin
+    .from("leads")
+    .select("id, upgrades")
+    .in("status", ["booked", "played"])
+    .in("musician_stage", ["new", "pending_booking"]);
+  const instrumentKeywords = Object.values(INSTRUMENT_KEYWORD);
+  const musicianRelevant = (bookedNoMusicianCandidates ?? []).filter((l) =>
+    instrumentKeywords.some((kw) => (l.upgrades || "").toLowerCase().includes(kw))
+  );
+  if (musicianRelevant.length > 0) {
+    const { data: alreadyBooked } = await admin
+      .from("lead_musicians")
+      .select("lead_id")
+      .in("lead_id", musicianRelevant.map((l) => l.id));
+    const bookedLeadIds = new Set((alreadyBooked ?? []).map((b) => b.lead_id));
+    const toFlip = musicianRelevant.filter((l) => !bookedLeadIds.has(l.id)).map((l) => l.id);
+    if (toFlip.length > 0) {
+      await admin.from("leads").update({ musician_stage: "booked_no_musician" }).in("id", toFlip);
+    }
+  }
 
   // One digest email per DJ, only if they actually have something open —
   // not a per-lead reminder, and no 48-hour staleness window: any date
