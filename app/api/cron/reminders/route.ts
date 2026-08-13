@@ -5,8 +5,10 @@ import { fmtDate } from "@/app/board/ui";
 import type { DjTier } from "@/lib/supabase/types";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoentertainment.com";
-const REMINDER_AFTER_MS = 48 * 60 * 60 * 1000;
 
+// Runs once daily (see vercel.json — 16:00 UTC, which is 9am Pacific during
+// daylight saving; Vercel Cron has no timezone awareness, so this drifts to
+// 8am Pacific once DST ends in November).
 export async function GET(request: Request) {
   const auth = request.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -22,15 +24,11 @@ export async function GET(request: Request) {
   await admin.from("leads").update({ status: "played" }).eq("status", "booked").lt("event_date", today);
   await admin.from("leads").update({ status: "lost" }).in("status", ["checking", "meeting"]).lt("event_date", today);
 
-  const cutoff = new Date(Date.now() - REMINDER_AFTER_MS).toISOString();
-
-  const { data: staleLeads } = await admin
-    .from("leads")
-    .select("*")
-    .eq("status", "checking")
-    .lt("created_at", cutoff);
-
-  if (!staleLeads || staleLeads.length === 0) {
+  // One digest email per DJ, only if they actually have something open —
+  // not a per-lead reminder, and no 48-hour staleness window: any date
+  // check still sitting unanswered counts every time this runs.
+  const { data: checkingLeads } = await admin.from("leads").select("*").eq("status", "checking");
+  if (!checkingLeads || checkingLeads.length === 0) {
     return NextResponse.json({ ok: true, reminded: 0 });
   }
 
@@ -42,43 +40,50 @@ export async function GET(request: Request) {
     .select("user_id, dj_tier_visibility, notify_email")
     .in("user_id", djs.map((d) => d.id));
 
+  const { data: responses } = await admin
+    .from("availability_responses")
+    .select("lead_id, dj_user_id")
+    .in("lead_id", checkingLeads.map((l) => l.id));
+  const respondedPairs = new Set((responses ?? []).map((r) => `${r.lead_id}:${r.dj_user_id}`));
+
   let reminded = 0;
 
-  for (const lead of staleLeads) {
-    const { data: responded } = await admin
-      .from("availability_responses")
-      .select("dj_user_id")
-      .eq("lead_id", lead.id);
-    const respondedIds = new Set((responded ?? []).map((r) => r.dj_user_id));
+  for (const dj of djs) {
+    const profile = profiles?.find((p) => p.user_id === dj.id);
+    if (profile && profile.notify_email === false) continue;
+    // Empty visibility means not qualified for anything yet — same rule
+    // as everywhere else this tier check appears.
+    const visibility = (profile?.dj_tier_visibility ?? []) as DjTier[];
 
-    const { data: alreadyReminded } = await admin
-      .from("events")
-      .select("actor_user_id")
-      .eq("lead_id", lead.id)
-      .eq("event_type", "reminder_sent");
-    const remindedIds = new Set((alreadyReminded ?? []).map((e) => e.actor_user_id));
-
-    for (const dj of djs) {
-      if (respondedIds.has(dj.id) || remindedIds.has(dj.id)) continue;
-      const profile = profiles?.find((p) => p.user_id === dj.id);
-      if (profile && profile.notify_email === false) continue;
-      const visibility = (profile?.dj_tier_visibility ?? []) as DjTier[];
+    const pending = checkingLeads.filter((lead) => {
       const tierMatches = !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
-      if (!tierMatches) continue;
+      return tierMatches && !respondedPairs.has(`${lead.id}:${dj.id}`);
+    });
+    if (pending.length === 0) continue;
 
-      const d = fmtDate(lead.event_date);
-      await sendEmail({
-        to: dj.email,
-        subject: "Still open — quick date check reminder",
-        html: `
-          <p>Hey ${dj.display_name || "there"} — this date check is still waiting on you.</p>
-          <p><strong>${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}</strong>${lead.location ? ` — ${lead.location}` : ""}</p>
-          <p><a href="${SITE_URL}/board?lead=${lead.id}">Mark yourself available or pass →</a></p>
-        `,
-      });
+    const rows = pending
+      .map((lead) => {
+        const d = fmtDate(lead.event_date);
+        const tier = [lead.dj_tier, lead.prod_tier].filter(Boolean).join(" + ");
+        return `<li><strong>${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}</strong>${tier ? ` — ${tier}` : ""}${lead.location ? ` — ${lead.location}` : ""}</li>`;
+      })
+      .join("");
+
+    const count = pending.length;
+    await sendEmail({
+      to: dj.email,
+      subject: `${count} open date check${count === 1 ? "" : "s"} waiting on you`,
+      html: `
+        <p>Hey ${dj.display_name || "there"} — you've got ${count} open date check${count === 1 ? "" : "s"} that still need a response.</p>
+        <ul>${rows}</ul>
+        <p><a href="${SITE_URL}/board">Open the board and mark yourself available or pass →</a></p>
+      `,
+    });
+
+    for (const lead of pending) {
       await admin.from("events").insert({ lead_id: lead.id, actor_user_id: dj.id, event_type: "reminder_sent" });
-      reminded++;
     }
+    reminded++;
   }
 
   return NextResponse.json({ ok: true, reminded });
