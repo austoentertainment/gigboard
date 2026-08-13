@@ -109,22 +109,39 @@ function matchesSearch(lead: LeadRow, query: string): boolean {
   return haystack.includes(q);
 }
 
-function AvailChips({ lead, roster, availability }: { lead: LeadRow; roster: RosterUser[]; availability: AvailabilityRow[] }) {
+function AvailChips({
+  lead, roster, musicianRoster, rosterProfiles, availability,
+}: {
+  lead: LeadRow;
+  roster: RosterUser[];
+  musicianRoster: RosterUser[];
+  rosterProfiles: { user_id: string; instrument: Instrument | null }[];
+  availability: AvailabilityRow[];
+}) {
   const responses = availability.filter((r) => r.lead_id === lead.id);
   const rosterMap = Object.fromEntries(roster.map((d) => [d.id, d.display_name || d.email]));
+  const musicianMap = Object.fromEntries(musicianRoster.map((m) => [m.id, m.display_name || m.email]));
+  const instrumentMap = Object.fromEntries(rosterProfiles.map((p) => [p.user_id, p.instrument]));
   const noReply = roster.filter((d) => !responses.some((r) => r.dj_user_id === d.id)).map((d) => d.display_name || d.email);
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      {responses.map((r) => (
-        <span key={r.dj_user_id} style={{
-          fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
-          background: r.response === "available" ? T.green + "22" : T.red + "18",
-          color: r.response === "available" ? T.green : T.red,
-          border: `1px solid ${r.response === "available" ? T.green : T.red}44`,
-        }}>
-          {rosterMap[r.dj_user_id] || "?"} {r.response === "available" ? "✓" : "✕"}
-        </span>
-      ))}
+      {responses.map((r) => {
+        // A musician's chip is colored by instrument (gold Sax, brown
+        // Violin) instead of the DJ side's green/red available/pass —
+        // rosterMap alone missed musicians entirely, showing "?" since
+        // they're never in the DJ roster.
+        const instrument = instrumentMap[r.dj_user_id];
+        const color = instrument ? INSTRUMENT_COLORS[instrument] : r.response === "available" ? T.green : T.red;
+        const name = rosterMap[r.dj_user_id] || musicianMap[r.dj_user_id] || "?";
+        return (
+          <span key={r.dj_user_id} style={{
+            fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
+            background: color + "22", color, border: `1px solid ${color}44`,
+          }}>
+            {name} {r.response === "available" ? "✓" : "✕"}
+          </span>
+        );
+      })}
       {noReply.length > 0 && <span style={{ fontSize: 11.5, color: T.dim }}>no reply: {noReply.join(", ")}</span>}
       {roster.length === 0 && <span style={{ fontSize: 11.5, color: T.dim }}>add DJs in Roster to run date checks</span>}
     </div>
@@ -783,7 +800,7 @@ function LeadCard({
         {expanded && djView && lead.dj_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.dj_notes}</div>}
         {expanded && !djView && lead.owner_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.owner_notes}</div>}
 
-        {expanded && !djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} availability={availability} />}
+        {expanded && !djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} availability={availability} />}
 
         {expanded && ["meeting", "booked", "played"].includes(st) && <MeetingNotesEditor lead={lead} onSave={onSaveNotes} />}
 
