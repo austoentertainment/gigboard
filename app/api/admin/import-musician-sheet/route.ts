@@ -65,10 +65,6 @@ function parseSheetDate(raw: string): string | null {
   return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
-function firstWord(s: string): string {
-  return s.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, "") || "";
-}
-
 function extractDollarAmount(raw: string): number | null {
   const m = raw.match(/\$?([\d,]+(?:\.\d+)?)/);
   if (!m) return null;
@@ -89,23 +85,47 @@ function matchServices(raw: string): MusicianService[] {
 
 type LeadCandidate = { id: string; client_name: string | null; fiance_name: string | null; event_date: string | null; musician_stage: string };
 
+// First-name-only matching produced false positives (e.g. "Catherine Holden
+// + Brandon Ririe" matched a lead for a totally different "Catherine ___ +
+// Noah ___" purely on the shared first name "Catherine" — common first
+// names collide constantly across ~100 leads). Comparing full "first last"
+// strings is the fix; namesMatch tolerates a missing middle name but still
+// requires both the first AND last word to agree.
+function normalizeName(s: string): string {
+  return s.trim().toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function namesMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aw = a.split(" ");
+  const bw = b.split(" ");
+  return aw[0] === bw[0] && aw[aw.length - 1] === bw[bw.length - 1] && aw[0] !== aw[aw.length - 1];
+}
+
 function matchLead(clientNameRaw: string, eventDateRaw: string, candidates: LeadCandidate[]): { match: LeadCandidate | null; reason?: string; candidateCount?: number } {
-  const halves = clientNameRaw.split("+").map((h) => firstWord(h)).filter(Boolean);
-  if (halves.length === 0) return { match: null, reason: "couldn't extract a name from CLIENT NAME" };
+  const halves = clientNameRaw.split("+").map((h) => normalizeName(h)).filter(Boolean);
+  if (halves.length < 2) return { match: null, reason: "couldn't split CLIENT NAME into two full names" };
 
   const sheetYear = parseSheetDate(eventDateRaw)?.slice(0, 4);
 
-  const scored = candidates.map((l) => {
-    const leadTokens = [firstWord(l.client_name || ""), firstWord(l.fiance_name || "")].filter(Boolean);
-    const hits = halves.filter((h) => leadTokens.includes(h)).length;
-    const yearMatch = sheetYear && l.event_date ? l.event_date.startsWith(sheetYear) : false;
-    return { lead: l, hits, yearMatch };
-  }).filter((s) => s.hits > 0);
+  // Only a bijective match — each half matching a DIFFERENT one of the
+  // lead's two name fields, first+last both agreeing — counts as a hit.
+  // A lone first-name overlap is treated as no evidence at all, not a
+  // weak match, since that's exactly what caused the false positives.
+  const scored = candidates
+    .map((l) => {
+      const clientName = normalizeName(l.client_name || "");
+      const fianceName = normalizeName(l.fiance_name || "");
+      const bijective = (namesMatch(halves[0], clientName) && namesMatch(halves[1], fianceName))
+        || (namesMatch(halves[0], fianceName) && namesMatch(halves[1], clientName));
+      const yearMatch = !!(sheetYear && l.event_date && l.event_date.startsWith(sheetYear));
+      return { lead: l, hit: bijective, yearMatch };
+    })
+    .filter((s) => s.hit);
 
-  if (scored.length === 0) return { match: null, reason: "no lead with a matching first name" };
-
-  const bestHits = Math.max(...scored.map((s) => s.hits));
-  let top = scored.filter((s) => s.hits === bestHits);
+  if (scored.length === 0) return { match: null, reason: "no lead with matching first+last names on both halves" };
+  let top = scored;
   if (top.length > 1) {
     const withYear = top.filter((s) => s.yearMatch);
     if (withYear.length === 1) top = withYear;
