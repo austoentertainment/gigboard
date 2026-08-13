@@ -349,7 +349,7 @@ function MusicianBookingRow({
   instrument: Instrument | null | undefined;
   booking: LeadMusicianRow;
   onUnbook: (id: string, label: string) => void;
-  onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => void;
+  onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null; deposit_paid?: boolean; paid_in_full?: boolean }, msg?: string) => void;
 }) {
   const [payout, setPayout] = useState(booking.payout != null ? String(booking.payout) : "");
   const [dirty, setDirty] = useState(false);
@@ -394,6 +394,22 @@ function MusicianBookingRow({
           </Btn>
         )}
       </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <Btn
+          kind={booking.deposit_paid ? "green" : "ghost"}
+          small
+          onClick={() => onUpdate(booking.id, { deposit_paid: !booking.deposit_paid }, booking.deposit_paid ? "Deposit unmarked" : "Deposit marked paid")}
+        >
+          {booking.deposit_paid ? "✓ " : ""}DEPOSIT PAID
+        </Btn>
+        <Btn
+          kind={booking.paid_in_full ? "green" : "ghost"}
+          small
+          onClick={() => onUpdate(booking.id, { paid_in_full: !booking.paid_in_full }, booking.paid_in_full ? "Unmarked paid in full" : "Marked paid in full")}
+        >
+          {booking.paid_in_full ? "✓ " : ""}PAID IN FULL
+        </Btn>
+      </div>
     </div>
   );
 }
@@ -407,7 +423,7 @@ function MusicianBooking({
   bookings: LeadMusicianRow[];
   onBook: (leadId: string, musicianId: string) => void;
   onUnbook: (id: string, label: string) => void;
-  onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => void;
+  onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null; deposit_paid?: boolean; paid_in_full?: boolean }, msg?: string) => void;
 }) {
   if (musicianRoster.length === 0) return null;
   return (
@@ -499,7 +515,7 @@ function LeadCard({
   leadMusicians: LeadMusicianRow[];
   onBookMusician: (leadId: string, musicianId: string) => void;
   onUnbookMusician: (id: string, label: string) => void;
-  onUpdateMusicianBooking: (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => void;
+  onUpdateMusicianBooking: (id: string, patch: { services?: MusicianService[]; payout?: number | null; deposit_paid?: boolean; paid_in_full?: boolean }, msg?: string) => void;
   onSetAvail: (leadId: string, answer: "available" | "pass") => void;
   onRetractAvail: (leadId: string) => void;
   onUpdateLead: (id: string, patch: LeadUpdate, msg?: string) => void;
@@ -1402,6 +1418,12 @@ function MusicianLeadCard({
                 ? <>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></>
                 : <span style={{ color: T.dim }}>Payout not set yet</span>}
             </div>
+            {(booking.deposit_paid || booking.paid_in_full) && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {booking.deposit_paid && <Tag color={T.green}>DEPOSIT PAID</Tag>}
+                {booking.paid_in_full && <Tag color={T.green}>PAID IN FULL</Tag>}
+              </div>
+            )}
           </>
         ) : onSetAvail && (
           <>
@@ -1771,7 +1793,7 @@ export default function BoardApp({
     loadData();
   };
 
-  const updateMusicianBooking = async (id: string, patch: { services?: MusicianService[]; payout?: number | null }, msg?: string) => {
+  const updateMusicianBooking = async (id: string, patch: { services?: MusicianService[]; payout?: number | null; deposit_paid?: boolean; paid_in_full?: boolean }, msg?: string) => {
     const { error } = await supabase.from("lead_musicians").update(patch).eq("id", id);
     if (error) { ping(friendlyError(error)); return; }
     if (msg) ping(msg);

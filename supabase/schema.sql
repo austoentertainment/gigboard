@@ -219,6 +219,8 @@ create table public.lead_musicians (
   musician_id uuid not null references public.users(id) on delete cascade,
   services text[] not null default '{}',
   payout numeric,
+  deposit_paid boolean not null default false,
+  paid_in_full boolean not null default false,
   created_at timestamptz not null default now(),
   unique (lead_id, musician_id)
 );

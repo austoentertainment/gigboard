@@ -66,6 +66,8 @@ export interface Database {
           musician_id: string;
           services: MusicianService[];
           payout: number | null;
+          deposit_paid: boolean;
+          paid_in_full: boolean;
           created_at: string;
         };
         Insert: {
@@ -73,10 +75,14 @@ export interface Database {
           musician_id: string;
           services?: MusicianService[];
           payout?: number | null;
+          deposit_paid?: boolean;
+          paid_in_full?: boolean;
         };
         Update: {
           services?: MusicianService[];
           payout?: number | null;
+          deposit_paid?: boolean;
+          paid_in_full?: boolean;
         };
         Relationships: [];
       };
