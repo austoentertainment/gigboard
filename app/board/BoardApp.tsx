@@ -1446,7 +1446,7 @@ function MusicianLeadCard({
       </div>
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ fontWeight: 800, fontSize: 15, fontFamily: "var(--font-heading), serif" }}>{names}</div>
+          <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
             {booking && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
