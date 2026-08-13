@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { fmtDate } from "@/app/board/ui";
-import { INSTRUMENT_KEYWORD } from "@/lib/instruments";
+import { anyInstrumentMentioned } from "@/lib/instruments";
 import type { DjTier } from "@/lib/supabase/types";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoentertainment.com";
@@ -42,13 +42,10 @@ export async function GET(request: Request) {
 
   const { data: bookedNoMusicianCandidates } = await admin
     .from("leads")
-    .select("id, upgrades")
+    .select("id, upgrades, client_vision")
     .in("status", ["booked", "played"])
     .in("musician_stage", ["new", "pending_booking"]);
-  const instrumentKeywords = Object.values(INSTRUMENT_KEYWORD);
-  const musicianRelevant = (bookedNoMusicianCandidates ?? []).filter((l) =>
-    instrumentKeywords.some((kw) => (l.upgrades || "").toLowerCase().includes(kw))
-  );
+  const musicianRelevant = (bookedNoMusicianCandidates ?? []).filter(anyInstrumentMentioned);
   if (musicianRelevant.length > 0) {
     const { data: alreadyBooked } = await admin
       .from("lead_musicians")

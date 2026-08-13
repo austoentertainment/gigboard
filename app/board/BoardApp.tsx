@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService } from "@/lib/supabase/types";
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
-import { INSTRUMENT_KEYWORD } from "@/lib/instruments";
+import { anyInstrumentMentioned, instrumentMentioned } from "@/lib/instruments";
 import {
   T, DJ_TIERS, LEAD_STATUS, MUSICIAN_STAGE, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
@@ -584,12 +584,12 @@ function LeadCard({
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
   const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
   // Gates the musician stage/booking controls: relevant if the upgrades
-  // text mentions an instrument, the owner's already advanced the stage
-  // by hand, or a musician's already booked on it — independent of the
-  // DJ-side status, since a musician add-on can be pursued (or fall
+  // or vision text mentions an instrument, the owner's already advanced
+  // the stage by hand, or a musician's already booked on it — independent
+  // of the DJ-side status, since a musician add-on can be pursued (or fall
   // through) at any point in the DJ pipeline.
   const musicianRelevant = !djView && (
-    Object.values(INSTRUMENT_KEYWORD).some((kw) => (lead.upgrades || "").toLowerCase().includes(kw))
+    anyInstrumentMentioned(lead)
     || lead.musician_stage !== "new"
     || leadMusicians.some((lm) => lm.lead_id === lead.id)
   );
@@ -2109,10 +2109,10 @@ export default function BoardApp({
   const myMusicianMoneyMade = myMusicianBookings.reduce((sum, b) => sum + (b.payout ?? 0), 0);
 
   // A musician's date-check pool is filtered by instrument keyword in the
-  // upgrades text — there's no per-musician visibility list to configure,
-  // so no instrument means no matches rather than "show everything."
-  const instrumentKeyword = myInstrument ? INSTRUMENT_KEYWORD[myInstrument] : null;
-  const instrumentVisible = (l: LeadRow) => !!instrumentKeyword && (l.upgrades || "").toLowerCase().includes(instrumentKeyword);
+  // upgrades or vision text — there's no per-musician visibility list to
+  // configure, so no instrument means no matches rather than "show
+  // everything."
+  const instrumentVisible = (l: LeadRow) => !!myInstrument && instrumentMentioned(l, myInstrument);
   // Every tab below keys off musician_stage rather than the DJ-side
   // status — the two pipelines run independently (see leads_feed and the
   // musician_stage column comment in schema.sql).

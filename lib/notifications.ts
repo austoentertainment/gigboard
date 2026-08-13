@@ -1,7 +1,7 @@
 import { createAdminClient } from "./supabase/admin";
 import { sendEmail } from "./email";
 import { fmtDate } from "@/app/board/ui";
-import { INSTRUMENT_KEYWORD } from "./instruments";
+import { instrumentMentioned, anyInstrumentMentioned } from "./instruments";
 import type { Database, DjTier, Instrument } from "./supabase/types";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
@@ -73,8 +73,7 @@ function leadSummaryForMusicianHtml(lead: Lead) {
 export async function notifyMusiciansOfNewLead(lead: Lead) {
   const admin = createAdminClient();
 
-  const upgrades = (lead.upgrades || "").toLowerCase();
-  if (!upgrades) return;
+  if (!anyInstrumentMentioned(lead)) return;
 
   const { data: musicians } = await admin.from("users").select("id, email, display_name").eq("role", "musician");
   if (!musicians || musicians.length === 0) return;
@@ -95,7 +94,7 @@ export async function notifyMusiciansOfNewLead(lead: Lead) {
     // Only notify when the lead actually mentions this musician's
     // instrument — there's no "date check" pool for musicians the way
     // there is for DJs, so an unrelated lead should never reach them.
-    if (!upgrades.includes(INSTRUMENT_KEYWORD[instrument])) continue;
+    if (!instrumentMentioned(lead, instrument)) continue;
 
     await sendEmail({
       to: musician.email,
