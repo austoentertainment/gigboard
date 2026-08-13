@@ -673,7 +673,11 @@ function LeadCard({
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
-              {musicianRelevant && !["booked", "played"].includes(st) && <Tag color={musicianStageDisplay(lead).color}>MUSICIAN: {musicianStageDisplay(lead).label}</Tag>}
+              {musicianRelevant && !["booked", "played"].includes(st) && (
+                <Tag color={musicianStageDisplay(lead).color}>
+                  {lead.musician_stage === "new" ? "MUSICIAN REQUESTED" : `MUSICIAN: ${musicianStageDisplay(lead).label}`}
+                </Tag>
+              )}
               {["booked", "played"].includes(st) && <BookedMusicianTags musicians={lead.booked_musicians} />}
               <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
