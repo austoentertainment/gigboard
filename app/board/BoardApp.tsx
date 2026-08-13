@@ -691,7 +691,18 @@ function LeadCard({
           )}
 
           {!djView && st === "ready" && (
-            <Btn kind="green" small onClick={() => onUpdateLead(lead.id, { status: "meeting" }, "Marked: meeting booked")}>
+            <Btn
+              kind="green"
+              small
+              onClick={() => {
+                onUpdateLead(lead.id, { status: "meeting" }, "Marked: meeting booked");
+                fetch("/api/notify/meeting-booked", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ leadId: lead.id }),
+                }).catch(() => {});
+              }}
+            >
               MEETING BOOKED →
             </Btn>
           )}
