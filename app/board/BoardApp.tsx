@@ -478,12 +478,12 @@ function LeadCard({
   const statusLabel = !djView && ["booked", "played"].includes(st) && assignedDjName
     ? assignedDjName
     : iAmAssignedFollowUp ? "FOLLOW UP"
-    : iAmAwaitingSelection ? "AWAITING DJ SELECTION"
+    : iAmAwaitingSelection ? "MEETING BOOKED"
     : iAmMarkedAvailable ? "AVAILABLE"
     : iHavePassed ? "PASSED"
     : iNeedToRespond ? "DATE CHECK NEEDED" : s.label;
   const statusColor = iAmAssignedFollowUp ? T.violet
-    : iAmAwaitingSelection ? T.accent
+    : iAmAwaitingSelection ? T.green
     : iAmMarkedAvailable ? T.green
     : iHavePassed ? T.dim
     : iNeedToRespond ? T.red : s.color;
@@ -2167,7 +2167,7 @@ export default function BoardApp({
             )}
             {myAwaitingSelection.length > 0 && (
               <>
-                <SectionLabel>SCHEDULED — AWAITING DJ SELECTION</SectionLabel>
+                <SectionLabel>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
                 <SortToggle sortBy={awaitingSelectionSort.by} sortDir={awaitingSelectionSort.dir} onChange={toggleSectionSort(setAwaitingSelectionSort)} />
                 {sortSection(myAwaitingSelection, awaitingSelectionSort).map((l) => (
                   <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
