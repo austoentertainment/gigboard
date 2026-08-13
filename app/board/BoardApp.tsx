@@ -1418,12 +1418,15 @@ function MusicianLeadCard({
                 ? <>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></>
                 : <span style={{ color: T.dim }}>Payout not set yet</span>}
             </div>
-            {(booking.deposit_paid || booking.paid_in_full) && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {booking.deposit_paid && <Tag color={T.green}>DEPOSIT PAID</Tag>}
-                {booking.paid_in_full && <Tag color={T.green}>PAID IN FULL</Tag>}
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {booking.paid_in_full ? (
+                <Tag color={T.green}>PAID IN FULL</Tag>
+              ) : booking.deposit_paid ? (
+                <Tag color={T.green}>DEPOSIT PAID</Tag>
+              ) : (
+                <Tag color={isPastEvent(lead) ? T.red : T.dim}>DEPOSIT NOT PAID</Tag>
+              )}
+            </div>
           </>
         ) : onSetAvail && (
           <>
