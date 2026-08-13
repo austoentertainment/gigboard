@@ -376,7 +376,7 @@ create trigger trg_log_availability_response
 --     than a single-winner assignment like the DJ side, one instrument
 --     being booked never hides the lead from a musician of a different
 --     instrument who's also waiting on it.
--- assigned_dj_name and booked_instruments are read-only convenience
+-- assigned_dj_name and booked_musicians are read-only convenience
 -- columns so a musician's own card can show "who's DJing" and "what else
 -- is booked" without needing users/lead_musicians access they don't have.
 -- has_available lets a DJ's own card show the same green "ready" cue the
@@ -425,12 +425,15 @@ select
   -- musician viewing their own card can't see whether a *different*
   -- musician is also booked on the same lead without this — computed here
   -- so it's available to every role without loosening lead_musicians RLS.
+  -- Includes the name (not just the instrument) so cards can tag each
+  -- booked musician by name, colored by instrument.
   (
-    select array_agg(distinct dp.instrument)
+    select jsonb_agg(jsonb_build_object('name', u.display_name, 'instrument', dp.instrument) order by dp.instrument)
     from public.lead_musicians lm
     join public.dj_profiles dp on dp.user_id = lm.musician_id
+    join public.users u on u.id = lm.musician_id
     where lm.lead_id = l.id and dp.instrument is not null
-  ) as booked_instruments
+  ) as booked_musicians
 from public.leads l
 where
   public.is_owner()

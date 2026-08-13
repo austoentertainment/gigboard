@@ -32,6 +32,11 @@ export const TIER_COLORS: Record<string, string> = {
   Essential: "#C68A4E",
 };
 
+export const INSTRUMENT_COLORS: Record<string, string> = {
+  Saxophone: "#E5C158",
+  Violin: "#C68A4E",
+};
+
 export const LEAD_STATUS: Record<string, { label: string; color: string }> = {
   checking: { label: "DATE CHECK", color: T.accent },
   ready: { label: "DJ AVAILABLE", color: T.green },

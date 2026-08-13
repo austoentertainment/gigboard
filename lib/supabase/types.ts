@@ -280,7 +280,7 @@ export interface Database {
           musician_stage: MusicianStage;
           musician_meeting_date: string | null;
           assigned_dj_name: string | null;
-          booked_instruments: Instrument[] | null;
+          booked_musicians: { name: string | null; instrument: Instrument }[] | null;
         };
         Relationships: [];
       };

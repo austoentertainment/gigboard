@@ -9,7 +9,7 @@ import { INSTRUMENT_KEYWORD } from "@/lib/instruments";
 import {
   T, DJ_TIERS, LEAD_STATUS, MUSICIAN_STAGE, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
-  MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES, TIER_COLORS,
+  MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES, TIER_COLORS, INSTRUMENT_COLORS,
 } from "./ui";
 
 type LeadRow = Database["public"]["Views"]["leads_feed"]["Row"];
@@ -299,6 +299,20 @@ function musicianStageDisplay(lead: LeadRow): { label: string; color: string } {
   return MUSICIAN_STAGE[lead.musician_stage];
 }
 
+// One tag per booked musician, by name, colored by their instrument —
+// e.g. "Brian" in gold (Saxophone), "Rebecca" in brown (Violin) — rather
+// than a generic "Saxophone"/"Violin" label.
+function BookedMusicianTags({ musicians }: { musicians: { name: string | null; instrument: Instrument }[] | null }) {
+  if (!musicians || musicians.length === 0) return null;
+  return (
+    <>
+      {musicians.map((m, i) => (
+        <Tag key={`${m.instrument}-${i}`} color={INSTRUMENT_COLORS[m.instrument] || T.blue}>{m.name || m.instrument}</Tag>
+      ))}
+    </>
+  );
+}
+
 // Replaces a free-form stage selector with buttons scoped to what's
 // actually possible from the current stage — mirrors how the DJ card's
 // actions work (different buttons for different states, not a dropdown).
@@ -565,11 +579,6 @@ function LeadCard({
     || lead.musician_stage !== "new"
     || leadMusicians.some((lm) => lm.lead_id === lead.id)
   );
-  // Sourced from leads_feed (not leadMusicians) since a musician's own
-  // booking-select RLS only covers their own row — this reflects every
-  // musician booked on the lead regardless of viewer.
-  const bookedInstrumentsLabel = lead.booked_instruments && lead.booked_instruments.length > 0
-    ? lead.booked_instruments.join(", ") : null;
   // These per-DJ labels aren't stored lead statuses — the lead itself is
   // "ready" or "meeting" for everyone else, but a DJ's own copy needs
   // wording that reflects where things stand specifically for them.
@@ -651,7 +660,7 @@ function LeadCard({
               {!djView && lead.needs_review && <Tag color={T.violet}>NEEDS REVIEW</Tag>}
               {unpaidPast && <Tag color={T.red}>UNPAID</Tag>}
               {musicianRelevant && !["booked", "played"].includes(st) && <Tag color={musicianStageDisplay(lead).color}>MUSICIAN: {musicianStageDisplay(lead).label}</Tag>}
-              {["booked", "played"].includes(st) && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
+              {["booked", "played"].includes(st) && <BookedMusicianTags musicians={lead.booked_musicians} />}
               <Tag color={statusColor}>{statusLabel}</Tag>
               <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
             </div>
@@ -1424,11 +1433,6 @@ function MusicianLeadCard({
     : myAnswer === "pass"
     ? { label: "PASSED", color: T.dim }
     : { label: "DATE CHECK NEEDED", color: T.red };
-  // Sourced from leads_feed, not leadMusicians — a musician's own
-  // lead_musicians SELECT only covers their own row, so this is the only
-  // way to know another musician's instrument is also booked on the lead.
-  const bookedInstrumentsLabel = lead.booked_instruments && lead.booked_instruments.length > 0
-    ? lead.booked_instruments.join(", ") : null;
   return (
     <div
       id={`lead-${lead.id}`}
@@ -1449,7 +1453,7 @@ function MusicianLeadCard({
           <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
-            {booking && bookedInstrumentsLabel && <Tag color={T.blue}>{bookedInstrumentsLabel}</Tag>}
+            {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
             <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
           </div>
         </div>
