@@ -819,13 +819,13 @@ function LeadCard({
           </div>
         )}
 
-        {(expanded || djView) && lead.upgrades && (
+        {expanded && lead.upgrades && (
           <div style={{ fontSize: 12.5, color: T.accent }}>
             <span style={{ color: T.dim, fontWeight: 700, letterSpacing: "0.1em", fontSize: 10.5 }}>UPGRADES </span>
             {lead.upgrades}
           </div>
         )}
-        {(expanded || djView) && lead.client_vision && (
+        {expanded && lead.client_vision && (
           <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap", borderLeft: `2px solid ${T.line}`, paddingLeft: 8 }}>
             {lead.client_vision}
           </div>
@@ -1512,6 +1512,7 @@ function MusicianLeadCard({
     ? new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + 14 * 24 * 60 * 60 * 1000)
       .toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
+  const [expanded, setExpanded] = useState(!!highlighted);
   return (
     <div
       id={`lead-${lead.id}`}
@@ -1528,45 +1529,53 @@ function MusicianLeadCard({
         {d.year && <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>{d.year}</div>}
       </div>
       <div style={{ flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, opacity: busy ? 0.5 : 1, pointerEvents: busy ? "none" : "auto" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div onClick={() => setExpanded((e) => !e)} style={{ display: "flex", flexDirection: "column", gap: 6, cursor: "pointer" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="lead-name" style={{ fontWeight: 800, fontSize: 24, fontFamily: "var(--font-heading), serif", lineHeight: 1.15 }}>{names}</div>
+              {(lead.dj_tier || lead.prod_tier) && (
+                <div className="lead-tier" style={{ fontWeight: 700, fontSize: 19, fontFamily: "var(--font-heading), serif", lineHeight: 1.2, marginTop: 2 }}>
+                  {lead.dj_tier && <span style={{ color: TIER_COLORS[lead.dj_tier] || T.blue }}>{lead.dj_tier}</span>}
+                  {lead.dj_tier && lead.prod_tier && <span style={{ color: T.dim }}> + </span>}
+                  {lead.prod_tier && <span style={{ color: TIER_COLORS[lead.prod_tier] || T.blue }}>{lead.prod_tier}</span>}
+                </div>
+              )}
+              <div style={{ fontSize: 12.5, color: T.dim, marginTop: 4 }}>{lead.location || "location TBD"}</div>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
                 {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
                 <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
+                <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
               </div>
               {holdUntilLabel && (
                 <div style={{ fontSize: 16, fontWeight: 800, color: T.yellow, fontFamily: "var(--font-heading), serif" }}>
                   until {holdUntilLabel}
                 </div>
               )}
+              {booking?.payout != null && (
+                <div style={{ fontSize: 12.5 }}>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></div>
+              )}
             </div>
           </div>
-          <div style={{ fontSize: 12.5, color: T.dim }}>{lead.location || "location TBD"}</div>
         </div>
-        {lead.upgrades && (
+        {expanded && lead.upgrades && (
           <div style={{ fontSize: 12.5, color: T.accent }}>
             <span style={{ color: T.dim, fontWeight: 700, letterSpacing: "0.1em", fontSize: 10.5 }}>UPGRADES </span>
             {lead.upgrades}
           </div>
         )}
-        {lead.client_vision && (
+        {expanded && lead.client_vision && (
           <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap", borderLeft: `2px solid ${T.line}`, paddingLeft: 8 }}>
             {lead.client_vision}
           </div>
         )}
-        {booking ? (
+        {expanded && (booking ? (
           <>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {services.map((s) => <Tag key={s} color={T.blue}>{s}</Tag>)}
               {services.length === 0 && <span style={{ fontSize: 11, color: T.red }}>services not set yet — check with Austin</span>}
-            </div>
-            <div style={{ fontSize: 12.5 }}>
-              {booking.payout != null
-                ? <>Payout: <strong style={{ color: T.text }}>${booking.payout}</strong></>
-                : <span style={{ color: T.dim }}>Payout not set yet</span>}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {booking.paid_in_full ? (
@@ -1579,19 +1588,17 @@ function MusicianLeadCard({
             </div>
           </>
         ) : onSetAvail && (
-          <>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn kind={myAnswer === "available" ? "green" : "primary"} small
-                onClick={() => (myAnswer === "available" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "available"))}>
-                {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
-              </Btn>
-              <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small
-                onClick={() => (myAnswer === "pass" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "pass"))}>
-                {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
-              </Btn>
-            </div>
-          </>
-        )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn kind={myAnswer === "available" ? "green" : "primary"} small
+              onClick={() => (myAnswer === "available" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "available"))}>
+              {myAnswer === "available" ? "✓ I'M AVAILABLE" : "I'M AVAILABLE"}
+            </Btn>
+            <Btn kind={myAnswer === "pass" ? "danger" : "ghost"} small
+              onClick={() => (myAnswer === "pass" ? onRetractAvail?.(lead.id) : onSetAvail(lead.id, "pass"))}>
+              {myAnswer === "pass" ? "✕ PASSED" : "PASS"}
+            </Btn>
+          </div>
+        ))}
       </div>
     </div>
   );
