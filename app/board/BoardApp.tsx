@@ -540,7 +540,6 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
     prodTier: lead.prod_tier || "",
     upgrades: lead.upgrades || "",
     vision: lead.client_vision || "",
-    notes: lead.owner_notes || "",
     djNotes: lead.dj_notes || "",
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
@@ -563,14 +562,13 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
       <Field label="UPGRADES"><Input value={f.upgrades} onChange={set("upgrades")} /></Field>
       <Field label="CLIENT VISION"><TextArea value={f.vision} onChange={set("vision")} /></Field>
       <SectionLabel>NOTES</SectionLabel>
-      <Field label="PRIVATE NOTES (OWNER ONLY)"><TextArea value={f.notes} onChange={set("notes")} /></Field>
       <Field label="NOTES FOR DJs (SHOWN ON DATE CHECK)"><TextArea value={f.djNotes} onChange={set("djNotes")} /></Field>
       <div style={{ fontSize: 11.5, color: T.dim }}>Payout, travel, and deposit status are edited directly on the card, not here.</div>
       <div style={{ display: "flex", gap: 8 }}>
         <Btn kind="primary" onClick={() => onSave({
           client_name: f.name, fiance_name: f.fianceName, contact: f.contact, event_date: f.date || null,
           location: f.location, dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
-          upgrades: f.upgrades, client_vision: f.vision, owner_notes: f.notes, dj_notes: f.djNotes,
+          upgrades: f.upgrades, client_vision: f.vision, dj_notes: f.djNotes,
         })}>SAVE CHANGES</Btn>
         <Btn onClick={onCancel}>CANCEL</Btn>
       </div>
@@ -833,7 +831,6 @@ function LeadCard({
           </div>
         )}
         {expanded && djView && lead.dj_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.dj_notes}</div>}
-        {expanded && !djView && lead.owner_notes && <div style={{ fontSize: 12.5, color: T.dim, whiteSpace: "pre-wrap" }}>{lead.owner_notes}</div>}
 
         {expanded && !djView && ["checking", "ready", "meeting"].includes(st) && <AvailChips lead={lead} roster={roster} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} availability={availability} onRemove={onRemoveAvailability} />}
 
@@ -1117,7 +1114,7 @@ function ManualForm({
 }) {
   const [f, setF] = useState({
     name: "", fianceName: "", contact: "", date: "", location: "", djTier: "", prodTier: "",
-    upgrades: "", vision: "", source: "", notes: "", djNotes: "", payout: "",
+    upgrades: "", vision: "", source: "", djNotes: "", payout: "",
     travelZone: "", travelRate: "",
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
@@ -1172,7 +1169,6 @@ function ManualForm({
         </Field>
       </div>
       <SectionLabel>NOTES</SectionLabel>
-      <Field label="PRIVATE NOTES (OWNER ONLY)"><TextArea value={f.notes} onChange={set("notes")} /></Field>
       <Field label="NOTES FOR DJs (SHOWN ON DATE CHECK)"><TextArea value={f.djNotes} onChange={set("djNotes")} placeholder="Outdoor ceremony, load-in 3pm…" /></Field>
       <div style={{ display: "flex", gap: 8 }}>
         <Btn kind="primary" onClick={() => {
@@ -1180,7 +1176,7 @@ function ManualForm({
           onSave({
             client_name: f.name, fiance_name: f.fianceName, contact: f.contact, event_date: f.date || null, location: f.location,
             dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
-            upgrades: f.upgrades, client_vision: f.vision, source: "manual", owner_notes: f.notes,
+            upgrades: f.upgrades, client_vision: f.vision, source: "manual",
             dj_notes: f.djNotes, payout: f.payout ? Number(f.payout) : null, status: "checking",
             travel_zone: (f.travelZone || null) as TravelZone | null,
             travel_rate: f.travelRate ? Number(f.travelRate) : null,
