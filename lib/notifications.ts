@@ -8,16 +8,33 @@ type Lead = Database["public"]["Tables"]["leads"]["Row"];
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoentertainment.com";
 
-function leadSummaryHtml(lead: Lead) {
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function leadEmailSubject(lead: Lead) {
   const d = fmtDate(lead.event_date);
-  const tier = [lead.dj_tier, lead.prod_tier].filter(Boolean).join(" + ");
-  const total = (lead.payout || 0) + (lead.travel_rate || 0);
-  const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ");
+  const dateStr = `${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`;
+  return `New Lead Opportunity ${dateStr} 💸`;
+}
+
+// Same body for both DJs and musicians — Upgrades and Vision are what
+// someone actually needs to decide whether a lead's a fit, and neither
+// role saw them in the email before (only date/location, or date/
+// location/tier/payout for DJs).
+function leadEmailBodyHtml(lead: Lead) {
+  const d = fmtDate(lead.event_date);
+  const dateStr = `${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`;
+  const names = escapeHtml([lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead");
+  const location = escapeHtml(lead.location || "TBD");
+  const upgrades = lead.upgrades ? escapeHtml(lead.upgrades).replace(/\n/g, "<br>") : "None listed";
+  const vision = lead.client_vision ? escapeHtml(lead.client_vision).replace(/\n/g, "<br>") : "Not provided";
   return `
-    <p><strong>${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}</strong></p>
-    ${names ? `<p>${names}</p>` : ""}
-    <p>${tier || "Tier TBD"}${lead.location ? ` — ${lead.location}` : ""}</p>
-    ${total ? `<p>$${total} payout${lead.travel_rate ? ` (includes $${lead.travel_rate} travel)` : ""}</p>` : ""}
+    <p><strong>Name of the Couple:</strong> ${names}</p>
+    <p><strong>Event Date:</strong> ${dateStr}</p>
+    <p><strong>Venue/Location:</strong> ${location}</p>
+    <p><strong>Upgrades:</strong> ${upgrades}</p>
+    <p><strong>Vision:</strong> ${vision}</p>
   `;
 }
 
@@ -44,30 +61,16 @@ export async function notifyDjsOfNewLead(lead: Lead) {
     const tierMatches = !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
     if (!tierMatches) continue;
 
-    const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ");
     await sendEmail({
       to: dj.email,
-      subject: names ? `New date check: ${names} — can you play this one?` : "New date check — can you play this one?",
+      subject: leadEmailSubject(lead),
       html: `
         <p>Hey ${dj.display_name || "there"} — a new date check just dropped.</p>
-        ${leadSummaryHtml(lead)}
+        ${leadEmailBodyHtml(lead)}
         <p><a href="${link}">Open it and mark yourself available or pass →</a></p>
       `,
     });
   }
-}
-
-// Deliberately omits payout/travel — a musician's rate is decided per-event
-// after they're actually booked, never at date-check time, so it must never
-// appear in this email regardless of what's on the lead.
-function leadSummaryForMusicianHtml(lead: Lead) {
-  const d = fmtDate(lead.event_date);
-  const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ");
-  return `
-    <p><strong>${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}</strong></p>
-    ${names ? `<p>${names}</p>` : ""}
-    ${lead.location ? `<p>${lead.location}</p>` : ""}
-  `;
 }
 
 export async function notifyMusiciansOfNewLead(lead: Lead) {
@@ -84,7 +87,6 @@ export async function notifyMusiciansOfNewLead(lead: Lead) {
     .in("user_id", musicians.map((m) => m.id));
 
   const link = `${SITE_URL}/board?lead=${lead.id}`;
-  const names = [lead.client_name, lead.fiance_name].filter(Boolean).join(" + ");
 
   for (const musician of musicians) {
     const profile = profiles?.find((p) => p.user_id === musician.id);
@@ -98,10 +100,10 @@ export async function notifyMusiciansOfNewLead(lead: Lead) {
 
     await sendEmail({
       to: musician.email,
-      subject: `New lead wants a ${instrument.toLowerCase()}${names ? `: ${names}` : ""}`,
+      subject: leadEmailSubject(lead),
       html: `
         <p>Hey ${musician.display_name || "there"} — a new lead just came in that mentions a ${instrument.toLowerCase()}.</p>
-        ${leadSummaryForMusicianHtml(lead)}
+        ${leadEmailBodyHtml(lead)}
         <p><a href="${link}">Open it →</a></p>
       `,
     });
