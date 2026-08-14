@@ -79,6 +79,28 @@ export const Tag = ({ children, color }: { children: React.ReactNode; color: str
   </span>
 );
 
+// Falls back to initials-on-a-circle when no photo's been uploaded yet,
+// so the Leaderboard never has a blank gap where a DJ hasn't opted in.
+export const Avatar = ({ url, name, size = 36, ring }: { url?: string | null; name: string; size?: number; ring?: boolean }) => {
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
+  const base: React.CSSProperties = {
+    width: size, height: size, borderRadius: "50%", flexShrink: 0,
+    border: `2px solid ${ring ? T.green : T.line}`, boxSizing: "border-box",
+  };
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element -- user-uploaded, unknown dimensions, not worth next/image's remote-loader setup for an avatar
+    return <img src={url} alt={name} style={{ ...base, objectFit: "cover" }} />;
+  }
+  return (
+    <div style={{
+      ...base, display: "flex", alignItems: "center", justifyContent: "center",
+      background: T.raised, color: T.dim, fontSize: size * 0.38, fontWeight: 800, fontFamily: "var(--font-heading), serif",
+    }}>
+      {initials}
+    </div>
+  );
+};
+
 export const Btn = ({
   children,
   onClick,

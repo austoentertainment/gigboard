@@ -8,7 +8,7 @@ import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import { anyInstrumentMentioned, instrumentMentioned } from "@/lib/instruments";
 import {
   T, DJ_TIERS, LEAD_STATUS, MUSICIAN_STAGE, fmtDate,
-  Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel,
+  Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel, Avatar,
   MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES, TIER_COLORS, INSTRUMENT_COLORS,
 } from "./ui";
 
@@ -340,6 +340,47 @@ function BookedMusicianTags({ musicians }: { musicians: { name: string | null; i
         <Tag key={`${m.instrument}-${i}`} color={INSTRUMENT_COLORS[m.instrument] || T.blue}>{m.name || m.instrument}</Tag>
       ))}
     </>
+  );
+}
+
+// Vertical (column) leaderboard: bar height encodes the dollar total (the
+// actual ranking metric), count is a secondary direct label, and color is
+// only a 2-state highlight (you vs. everyone else) — identity is already
+// carried by the avatar + name, not by color, so this doesn't need a full
+// categorical palette. No gridlines: every bar is already direct-labeled.
+function DjBarChart({
+  rows, userId, unit,
+}: {
+  rows: { dj_id: string; display_name: string | null; email: string; avatar_url: string | null; count: number; total: number }[];
+  userId: string;
+  unit: string;
+}) {
+  if (rows.length === 0) return <Empty text="Once DJs start booking gigs, standings show up here." />;
+  const maxTotal = Math.max(1, ...rows.map((r) => r.total));
+  const BAR_MAX = 140;
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 22, overflowX: "auto", paddingTop: 4, paddingBottom: 4 }}>
+      {rows.map((r) => {
+        const isMe = r.dj_id === userId;
+        const barHeight = Math.max(4, Math.round((r.total / maxTotal) * BAR_MAX));
+        return (
+          <div key={r.dj_id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 68, flexShrink: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.text, whiteSpace: "nowrap" }}>${r.total}</div>
+            <Avatar url={r.avatar_url} name={r.display_name || r.email} size={36} ring={isMe} />
+            <div
+              style={{
+                width: 24, height: barHeight, borderRadius: "4px 4px 0 0",
+                background: isMe ? T.green : T.teal,
+              }}
+            />
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: T.text, textAlign: "center", maxWidth: 84, lineHeight: 1.25 }}>
+              {r.display_name || r.email}{isMe && <span style={{ color: T.dim, fontWeight: 400 }}> (you)</span>}
+            </div>
+            <div style={{ fontSize: 10.5, color: T.dim }}>{r.count} {unit}{r.count !== 1 ? "s" : ""}</div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1191,6 +1232,53 @@ function ManualForm({
 function generatePassword() {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+// Self-service — a DJ uploads their own photo directly to Storage (RLS on
+// the bucket restricts writes to the uploader's own folder or the owner),
+// no server route needed. Upsert-by-fixed-filename means re-uploading
+// just replaces the old photo rather than accumulating orphaned files.
+function AvatarUpload({
+  userId, currentUrl, onChanged, ping,
+}: { userId: string; currentUrl: string | null; onChanged: () => void; ping: (m: string) => void }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { ping("Please pick an image file"); return; }
+    setUploading(true);
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const path = `${userId}/avatar.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, cacheControl: "3600" });
+    if (uploadError) { ping(uploadError.message || "Couldn't upload photo"); setUploading(false); return; }
+    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+    // Cache-bust so the new photo shows immediately instead of the
+    // browser reusing whatever it already cached at this same URL.
+    const url = `${data.publicUrl}?t=${Date.now()}`;
+    const { error } = await supabase.from("dj_profiles").update({ avatar_url: url }).eq("user_id", userId);
+    setUploading(false);
+    if (error) { ping(error.message || "Couldn't save photo"); return; }
+    ping("Photo updated");
+    onChanged();
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <Avatar url={currentUrl} name="Your photo" size={44} />
+      <label style={{ cursor: uploading ? "default" : "pointer" }}>
+        <input type="file" accept="image/*" onChange={handleFile} disabled={uploading} style={{ display: "none" }} />
+        <span style={{
+          fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+          padding: "6px 12px", borderRadius: 6, border: `1px solid ${T.line}`, color: T.dim,
+        }}>
+          {uploading ? "UPLOADING…" : currentUrl ? "CHANGE PHOTO" : "UPLOAD PHOTO"}
+        </span>
+      </label>
+    </div>
+  );
 }
 
 function RosterEmailEditor({
@@ -2192,12 +2280,14 @@ export default function BoardApp({
   const myGigs = leads.filter((l) => l.assigned_dj_id === userId && ["booked", "played"].includes(leadStatus(l)));
   const myUpcoming = myGigs.filter((l) => !isPastEvent(l));
   const myCompleted = myGigs.filter((l) => isPastEvent(l));
-  const rankedLeaderboard = [...leaderboard].sort((a, b) => b.booking_total - a.booking_total);
+  const completedLeaderboard = [...leaderboard].sort((a, b) => b.completed_total - a.completed_total);
+  const bookedLeaderboard = [...leaderboard].sort((a, b) => b.booked_total - a.booked_total);
   const nextDjEvent = [...myUpcoming].sort(byDate)[0];
   // Same "all bookings ever, any status" total the Leaderboard already
-  // shows for every DJ — reusing it here keeps the two numbers from ever
-  // disagreeing with each other.
-  const myMoneyMade = rankedLeaderboard.find((r) => r.dj_id === userId)?.booking_total ?? 0;
+  // shows for every DJ (completed + booked combined) — reusing it here
+  // keeps the two numbers from ever disagreeing with each other.
+  const myLeaderboardRow = leaderboard.find((r) => r.dj_id === userId);
+  const myMoneyMade = (myLeaderboardRow?.completed_total ?? 0) + (myLeaderboardRow?.booked_total ?? 0);
 
   const myMusicianLeadIds = new Set(myMusicianBookings.map((b) => b.lead_id));
   const myMusicianLeads = leads.filter((l) => myMusicianLeadIds.has(l.id));
@@ -2611,27 +2701,19 @@ export default function BoardApp({
             >
               Gentleman, your winner
             </a>
-            {rankedLeaderboard.length === 0 && <Empty text="Once DJs start booking gigs, standings show up here." />}
-            {rankedLeaderboard.map((row, i) => {
-              const isMe = row.dj_id === userId;
-              return (
-                <div
-                  key={row.dj_id}
-                  style={{
-                    background: T.surface, border: `1px solid ${isMe ? T.accent : T.line}`, borderRadius: 8,
-                    padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <div style={{ fontFamily: "var(--font-heading), serif", fontSize: 16, fontWeight: 900, color: T.dim, width: 24, flexShrink: 0 }}>{i + 1}</div>
-                    <div style={{ fontWeight: 700 }}>{row.display_name || row.email}{isMe && <span style={{ color: T.dim, fontWeight: 400 }}> (you)</span>}</div>
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: T.text, textAlign: "right", whiteSpace: "nowrap" }}>
-                    {row.booking_count} gig{row.booking_count !== 1 ? "s" : ""}{row.booking_total ? ` · $${row.booking_total}` : ""}
-                  </div>
-                </div>
-              );
-            })}
+            <AvatarUpload userId={userId} currentUrl={myLeaderboardRow?.avatar_url ?? null} onChanged={loadData} ping={ping} />
+            <SectionLabel>EVENTS COMPLETED</SectionLabel>
+            <DjBarChart
+              userId={userId}
+              unit="event"
+              rows={completedLeaderboard.map((r) => ({ dj_id: r.dj_id, display_name: r.display_name, email: r.email, avatar_url: r.avatar_url, count: r.completed_count, total: r.completed_total }))}
+            />
+            <SectionLabel>EVENTS BOOKED</SectionLabel>
+            <DjBarChart
+              userId={userId}
+              unit="event"
+              rows={bookedLeaderboard.map((r) => ({ dj_id: r.dj_id, display_name: r.display_name, email: r.email, avatar_url: r.avatar_url, count: r.booked_count, total: r.booked_total }))}
+            />
           </>
         )}
 

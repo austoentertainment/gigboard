@@ -41,6 +41,7 @@ export interface Database {
           notify_email: boolean;
           notify_sms: boolean;
           phone: string | null;
+          avatar_url: string | null;
         };
         Insert: {
           user_id: string;
@@ -49,6 +50,7 @@ export interface Database {
           notify_email?: boolean;
           notify_sms?: boolean;
           phone?: string | null;
+          avatar_url?: string | null;
         };
         Update: {
           dj_tier_visibility?: DjTier[];
@@ -56,6 +58,7 @@ export interface Database {
           notify_email?: boolean;
           notify_sms?: boolean;
           phone?: string | null;
+          avatar_url?: string | null;
         };
         Relationships: [];
       };
@@ -289,8 +292,11 @@ export interface Database {
           dj_id: string;
           display_name: string | null;
           email: string;
-          booking_count: number;
-          booking_total: number;
+          avatar_url: string | null;
+          completed_count: number;
+          completed_total: number;
+          booked_count: number;
+          booked_total: number;
         };
         Relationships: [];
       };

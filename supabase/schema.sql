@@ -121,7 +121,8 @@ create table public.dj_profiles (
   instrument text check (instrument in ('Saxophone', 'Violin')),
   notify_email boolean not null default true,
   notify_sms boolean not null default false,
-  phone text
+  phone text,
+  avatar_url text
 );
 
 alter table public.dj_profiles enable row level security;
@@ -134,6 +135,37 @@ create policy "dj_profiles_update" on public.dj_profiles
 
 create policy "dj_profiles_insert" on public.dj_profiles
   for insert with check (public.is_owner());
+
+-- ============================================================
+-- avatars storage bucket — public read (so a plain <img src> works for
+-- teammates and the Leaderboard without a signed URL), write restricted
+-- to the file's own folder ({user_id}/...) or the owner managing anyone's.
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "avatar_public_read" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+create policy "avatar_owner_or_self_write" on storage.objects
+  for insert with check (
+    bucket_id = 'avatars'
+    and (auth.uid()::text = (storage.foldername(name))[1] or public.is_owner())
+  );
+
+create policy "avatar_owner_or_self_update" on storage.objects
+  for update using (
+    bucket_id = 'avatars'
+    and (auth.uid()::text = (storage.foldername(name))[1] or public.is_owner())
+  );
+
+create policy "avatar_owner_or_self_delete" on storage.objects
+  for delete using (
+    bucket_id = 'avatars'
+    and (auth.uid()::text = (storage.foldername(name))[1] or public.is_owner())
+  );
 
 -- ============================================================
 -- leads
@@ -474,11 +506,16 @@ grant select on public.leads_feed to authenticated;
 -- ============================================================
 -- dj_leaderboard — aggregate-only, so any DJ can see the team's
 -- standings without exposing anyone's individual leads/clients.
--- Same count/total semantics as the owner's Roster view (every lead
--- actually booked or played). Scoped to status in ('booked','played')
--- rather than just "has an assigned_dj_id" — a DJ can be assigned during
--- the meeting stage (visible in their Pending tab) before the owner marks
--- it booked, and that assignment must not count as a won/earned gig yet.
+-- Split into two mutually-exclusive standings rather than one combined
+-- figure: completed (status='played', the event already happened) and
+-- booked (status='booked', confirmed but still upcoming). A DJ can be
+-- assigned during the meeting stage (visible in their Pending tab)
+-- before the owner marks it booked, and that assignment must not count
+-- as a won/earned gig yet — same reasoning as before, just applied to
+-- both halves of the split. avatar_url comes along for the Leaderboard's
+-- photo display; dj_profiles' own RLS would normally block a DJ from
+-- reading a teammate's profile row, but this view (like the rest of it)
+-- runs with the view-owner's privileges, so the join isn't blocked.
 -- ============================================================
 
 create view public.dj_leaderboard as
@@ -486,12 +523,16 @@ select
   u.id as dj_id,
   u.display_name,
   u.email,
-  count(l.id) as booking_count,
-  coalesce(sum(coalesce(l.payout, 0) + coalesce(l.travel_rate, 0)), 0) as booking_total
+  dp.avatar_url,
+  count(l.id) filter (where l.status = 'played') as completed_count,
+  coalesce(sum((coalesce(l.payout, 0) + coalesce(l.travel_rate, 0))) filter (where l.status = 'played'), 0) as completed_total,
+  count(l.id) filter (where l.status = 'booked') as booked_count,
+  coalesce(sum((coalesce(l.payout, 0) + coalesce(l.travel_rate, 0))) filter (where l.status = 'booked'), 0) as booked_total
 from public.users u
+left join public.dj_profiles dp on dp.user_id = u.id
 left join public.leads l on l.assigned_dj_id = u.id and l.status in ('booked', 'played')
 where u.role = 'dj'
-group by u.id, u.display_name, u.email;
+group by u.id, u.display_name, u.email, dp.avatar_url;
 
 grant select on public.dj_leaderboard to authenticated;
 
