@@ -101,7 +101,7 @@ export default function LoginPage() {
                 onClick={() => { setMode("forgot"); setError(""); }}
                 style={{ background: "none", border: "none", color: T.dim, fontSize: 12, fontFamily: "inherit", cursor: "pointer", textDecoration: "underline", padding: 0, textAlign: "left" }}
               >
-                Forgot your password, or signing in for the first time?
+                Forgot your password?
               </button>
             </form>
           )}
@@ -111,13 +111,13 @@ export default function LoginPage() {
               <>
                 <div style={{ fontWeight: 800, fontSize: 13, color: T.green }}>CHECK YOUR EMAIL</div>
                 <div style={{ fontSize: 13, color: T.dim }}>
-                  Sent a link to <span style={{ color: T.text }}>{email}</span> — open it to set your password.
+                  Sent a link to <span style={{ color: T.text }}>{email}</span> — open it to reset your password.
                 </div>
               </>
             ) : (
               <form onSubmit={sendSetupLink} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ fontSize: 12.5, color: T.dim }}>
-                  Enter your email and we&apos;ll send you a link to set (or reset) your password.
+                  Enter your email and we&apos;ll send you a link to reset your password.
                 </div>
                 <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>EMAIL</span>
@@ -132,7 +132,7 @@ export default function LoginPage() {
                     background: T.teal, color: T.text, border: `1px solid ${T.teal}`, opacity: busy ? 0.6 : 1,
                   }}
                 >
-                  {busy ? "SENDING…" : "SEND SETUP LINK"}
+                  {busy ? "SENDING…" : "SEND RESET LINK"}
                 </button>
                 {error && <div style={{ fontSize: 12.5, color: "#F0616D" }}>{error}</div>}
                 <button
