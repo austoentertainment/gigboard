@@ -1968,18 +1968,15 @@ function GigCalendar({
   );
 }
 
-const BADGE_DEFS: { id: string; label: string; color: string; earned: (ctx: { completed: number; streak: number }) => boolean }[] = [
-  { id: "first-gig", label: "FIRST GIG", color: T.green, earned: (ctx) => ctx.completed >= 1 },
-  { id: "regular", label: "REGULAR · 5 GIGS", color: T.blue, earned: (ctx) => ctx.completed >= 5 },
-  { id: "veteran", label: "VETERAN · 25 GIGS", color: T.yellow, earned: (ctx) => ctx.completed >= 25 },
+const BADGE_DEFS: { id: string; label: string; color: string; earned: (ctx: { streak: number }) => boolean }[] = [
   { id: "quick-draw", label: "QUICK DRAW · 5-STREAK", color: T.violet, earned: (ctx) => ctx.streak >= 5 },
   { id: "on-fire", label: "ON FIRE · 10-STREAK", color: T.accent, earned: (ctx) => ctx.streak >= 10 },
 ];
 
 // Badges are derived entirely from counts already in state — no earned-
 // badges table, so nothing to migrate if the thresholds change later.
-function BadgeRow({ completed, streak }: { completed: number; streak: number }) {
-  const ctx = { completed, streak };
+function BadgeRow({ streak }: { streak: number }) {
+  const ctx = { streak };
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {BADGE_DEFS.map((b) => {
@@ -2775,7 +2772,7 @@ export default function BoardApp({
               <StatCard value={`$${myMoneyMade}`} label="EARNED FROM BOOKINGS" />
               <StatCard value={myStreak} label="RESPONSE STREAK" />
             </div>
-            <BadgeRow completed={myCompleted.length} streak={myStreak} />
+            <BadgeRow streak={myStreak} />
             <NextEventCard
               lead={nextDjEvent}
               subtitle={nextDjEvent ? tierStr(nextDjEvent) : ""}
@@ -2918,7 +2915,7 @@ export default function BoardApp({
               <StatCard value={`$${myMusicianMoneyMade}`} label="EARNED FROM BOOKINGS" />
               <StatCard value={myMusicianStreak} label="RESPONSE STREAK" />
             </div>
-            <BadgeRow completed={myMusicianComplete.length} streak={myMusicianStreak} />
+            <BadgeRow streak={myMusicianStreak} />
             <NextEventCard
               lead={nextMusicianEvent}
               subtitle={nextMusicianBooking?.services?.join(", ") || ""}
