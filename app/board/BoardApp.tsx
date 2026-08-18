@@ -25,6 +25,29 @@ type LeadMusicianRow = Database["public"]["Tables"]["lead_musicians"]["Row"];
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
 const isPastEvent = (l: LeadRow) => !!l.event_date && l.event_date < new Date().toISOString().slice(0, 10);
+
+// Same 48-hour window as the non-responder reminder cron (see
+// app/api/cron/reminders/route.ts) — reusing it here keeps "on time" the
+// same meaning everywhere, rather than inventing a second threshold. A
+// currently-open check older than 48h without a response breaks the
+// streak outright, since it's already late; otherwise the streak is how
+// many of the most recent responses (newest lead first) came in inside
+// the window before the first one that didn't.
+const RESPONSE_STREAK_WINDOW_MS = 48 * 60 * 60 * 1000;
+function computeResponseStreak(
+  respondedLeads: { leadCreatedAt: string; respondedAt: string }[],
+  openChecks: LeadRow[],
+): number {
+  const now = Date.now();
+  if (openChecks.some((l) => now - new Date(l.created_at).getTime() > RESPONSE_STREAK_WINDOW_MS)) return 0;
+  const sorted = [...respondedLeads].sort((a, b) => new Date(b.leadCreatedAt).getTime() - new Date(a.leadCreatedAt).getTime());
+  let streak = 0;
+  for (const r of sorted) {
+    if (new Date(r.respondedAt).getTime() - new Date(r.leadCreatedAt).getTime() > RESPONSE_STREAK_WINDOW_MS) break;
+    streak++;
+  }
+  return streak;
+}
 const bySubmitted = (a: LeadRow, b: LeadRow) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
 // Some sections (the DJ's Date Checks / Pending sub-categories) each need
@@ -1945,6 +1968,41 @@ function GigCalendar({
   );
 }
 
+const BADGE_DEFS: { id: string; label: string; color: string; earned: (ctx: { completed: number; streak: number }) => boolean }[] = [
+  { id: "first-gig", label: "FIRST GIG", color: T.green, earned: (ctx) => ctx.completed >= 1 },
+  { id: "regular", label: "REGULAR · 5 GIGS", color: T.blue, earned: (ctx) => ctx.completed >= 5 },
+  { id: "veteran", label: "VETERAN · 25 GIGS", color: T.yellow, earned: (ctx) => ctx.completed >= 25 },
+  { id: "quick-draw", label: "QUICK DRAW · 5-STREAK", color: T.violet, earned: (ctx) => ctx.streak >= 5 },
+  { id: "on-fire", label: "ON FIRE · 10-STREAK", color: T.accent, earned: (ctx) => ctx.streak >= 10 },
+];
+
+// Badges are derived entirely from counts already in state — no earned-
+// badges table, so nothing to migrate if the thresholds change later.
+function BadgeRow({ completed, streak }: { completed: number; streak: number }) {
+  const ctx = { completed, streak };
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {BADGE_DEFS.map((b) => {
+        const earned = b.earned(ctx);
+        return (
+          <span
+            key={b.id}
+            style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", borderRadius: 4, padding: "6px 10px",
+              border: `1px solid ${earned ? b.color + "66" : T.line}`,
+              color: earned ? b.color : T.dim,
+              background: earned ? b.color + "14" : "transparent",
+              opacity: earned ? 1 : 0.5,
+            }}
+          >
+            {b.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function BoardApp({
   userId,
   displayName,
@@ -1968,6 +2026,7 @@ export default function BoardApp({
   const [myMusicianBookings, setMyMusicianBookings] = useState<LeadMusicianRow[]>([]);
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
+  const [myResponseTimes, setMyResponseTimes] = useState<Record<string, string>>({});
   const [myTiers, setMyTiers] = useState<string[]>([]);
   const [myInstrument, setMyInstrument] = useState<Instrument | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
@@ -2052,8 +2111,9 @@ export default function BoardApp({
       const { data: settingsData } = await supabase.from("company_settings").select("*").eq("id", 1).single();
       setCompanySettings(settingsData ?? null);
     } else if (role === "dj") {
-      const { data: mine } = await supabase.from("availability_responses").select("lead_id,response").eq("dj_user_id", userId);
+      const { data: mine } = await supabase.from("availability_responses").select("lead_id,response,responded_at").eq("dj_user_id", userId);
       setMyAvailability(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.response])));
+      setMyResponseTimes(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.responded_at])));
       const { data: prof } = await supabase.from("dj_profiles").select("dj_tier_visibility").eq("user_id", userId).single();
       setMyTiers(prof?.dj_tier_visibility ?? []);
       const { data: leaderboardData } = await supabase.from("dj_leaderboard").select("*");
@@ -2061,8 +2121,9 @@ export default function BoardApp({
     } else {
       const { data: myBookings } = await supabase.from("lead_musicians").select("*").eq("musician_id", userId);
       setMyMusicianBookings(myBookings ?? []);
-      const { data: mine } = await supabase.from("availability_responses").select("lead_id,response").eq("dj_user_id", userId);
+      const { data: mine } = await supabase.from("availability_responses").select("lead_id,response,responded_at").eq("dj_user_id", userId);
       setMyAvailability(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.response])));
+      setMyResponseTimes(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.responded_at])));
       const { data: prof } = await supabase.from("dj_profiles").select("instrument").eq("user_id", userId).single();
       setMyInstrument((prof?.instrument as Instrument | null) ?? null);
     }
@@ -2371,6 +2432,14 @@ export default function BoardApp({
   const needsMe = myChecks.filter((l) => !myAvailability[l.id]);
   const myMarkedAvailable = myChecks.filter((l) => myAvailability[l.id] === "available");
   const myArchive = myChecks.filter((l) => myAvailability[l.id] === "pass");
+  const myRespondedLeads = Object.keys(myAvailability)
+    .map((leadId) => {
+      const lead = leads.find((l) => l.id === leadId);
+      const respondedAt = myResponseTimes[leadId];
+      return lead && respondedAt ? { leadCreatedAt: lead.created_at, respondedAt } : null;
+    })
+    .filter((r): r is { leadCreatedAt: string; respondedAt: string } => r !== null);
+  const myStreak = computeResponseStreak(myRespondedLeads, needsMe);
   // Pending splits into two: leads Austin has actually assigned to me
   // (status "meeting", assigned_dj_id = me) waiting on me to follow up and
   // get it booked, and leads where I said available and Austin has booked
@@ -2414,6 +2483,14 @@ export default function BoardApp({
   const myMusicianChecks = newMusicianLeads.filter(instrumentVisible).filter((l) => !myMusicianLeadIds.has(l.id));
   const needsMeMusician = myMusicianChecks.filter((l) => !myAvailability[l.id]);
   const myMusicianMarkedAvailable = myMusicianChecks.filter((l) => myAvailability[l.id] === "available");
+  const myMusicianRespondedLeads = Object.keys(myAvailability)
+    .map((leadId) => {
+      const lead = leads.find((l) => l.id === leadId);
+      const respondedAt = myResponseTimes[leadId];
+      return lead && respondedAt ? { leadCreatedAt: lead.created_at, respondedAt } : null;
+    })
+    .filter((r): r is { leadCreatedAt: string; respondedAt: string } => r !== null);
+  const myMusicianStreak = computeResponseStreak(myMusicianRespondedLeads, needsMeMusician);
   // Pending Booking: Austin's had the intro call and the 14-day hold is
   // on. Stays visible to every musician of that instrument who said
   // available until it either books (drops into Planning) or the owner
@@ -2696,7 +2773,9 @@ export default function BoardApp({
               <StatCard value={myUpcoming.length} label="EVENTS BOOKED" onClick={() => setTab("upcoming")} />
               <StatCard value={myCompleted.length} label="EVENTS COMPLETED" onClick={() => setTab("completed")} />
               <StatCard value={`$${myMoneyMade}`} label="EARNED FROM BOOKINGS" />
+              <StatCard value={myStreak} label="RESPONSE STREAK" />
             </div>
+            <BadgeRow completed={myCompleted.length} streak={myStreak} />
             <NextEventCard
               lead={nextDjEvent}
               subtitle={nextDjEvent ? tierStr(nextDjEvent) : ""}
@@ -2837,7 +2916,9 @@ export default function BoardApp({
               <StatCard value={myMusicianPlanning.length} label="EVENTS BOOKED" onClick={() => setTab("musician-upcoming")} />
               <StatCard value={myMusicianComplete.length} label="EVENTS COMPLETED" onClick={() => setTab("musician-completed")} />
               <StatCard value={`$${myMusicianMoneyMade}`} label="EARNED FROM BOOKINGS" />
+              <StatCard value={myMusicianStreak} label="RESPONSE STREAK" />
             </div>
+            <BadgeRow completed={myMusicianComplete.length} streak={myMusicianStreak} />
             <NextEventCard
               lead={nextMusicianEvent}
               subtitle={nextMusicianBooking?.services?.join(", ") || ""}
