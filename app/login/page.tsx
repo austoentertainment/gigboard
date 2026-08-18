@@ -65,11 +65,11 @@ export default function LoginPage() {
       }}
     >
       <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
-          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: T.accent, boxShadow: `0 0 8px ${T.accent}` }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center" }}>
+          <span style={{ display: "inline-block", width: 20, height: 20, borderRadius: "50%", background: T.accent, boxShadow: `0 0 16px ${T.accent}` }} />
           <div>
-            <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "0.14em", textAlign: "center", fontFamily: "var(--font-heading), serif" }}>AUSTO</div>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.34em", color: T.dim, marginTop: -2, textAlign: "center" }}>GIG BOARD</div>
+            <div style={{ fontWeight: 900, fontSize: 36, letterSpacing: "0.14em", textAlign: "center", fontFamily: "var(--font-heading), serif" }}>AUSTO</div>
+            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "0.34em", color: T.dim, marginTop: -4, textAlign: "center" }}>GIG BOARD</div>
           </div>
         </div>
 
