@@ -2355,7 +2355,7 @@ export default function BoardApp({
   const musicianTabs = [
     { id: "musician-home", label: "HOME", count: 0 },
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
-    { id: "musician-pending", label: "PENDING BOOKING", count: myMusicianPendingBooking.length },
+    { id: "musician-pending", label: "PENDING", count: myMusicianPendingBooking.length },
     { id: "musician-upcoming", label: "UPCOMING", count: myMusicianPlanning.length },
     { id: "musician-completed", label: "COMPLETE", count: 0 },
     { id: "musician-archive", label: "ARCHIVE", count: myMusicianArchive.length },
@@ -2611,21 +2611,18 @@ export default function BoardApp({
               <Empty text="No date checks match your assigned tiers right now." />
             )}
             {checking.length === 0 && <Empty text="No open date checks. New ones light up amber when they drop." />}
-            {myChecks.length > 0 && needsMe.length === 0 && myMarkedAvailable.length === 0 && (
-              <Empty text="You've responded to everything here — check Pending or Archive." />
-            )}
-            {needsMe.length > 0 && (
+            {needsMe.length > 0 ? (
               <>
-                <SectionLabel>NEED AVAILABILITY</SectionLabel>
+                <SectionLabel large>NEED AVAILABILITY</SectionLabel>
                 <SortToggle sortBy={needAvailSort.by} sortDir={needAvailSort.dir} onChange={toggleSectionSort(setNeedAvailSort)} />
                 {sortSection(needsMe, needAvailSort).map((l) => (
                   <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
-            )}
+            ) : myChecks.length > 0 && <Empty text="All caught up!" />}
             {myMarkedAvailable.length > 0 && (
               <>
-                <SectionLabel>MARKED AVAILABLE</SectionLabel>
+                <SectionLabel large>MARKED AVAILABLE</SectionLabel>
                 <SortToggle sortBy={markedAvailSort.by} sortDir={markedAvailSort.dir} onChange={toggleSectionSort(setMarkedAvailSort)} />
                 {sortSection(myMarkedAvailable, markedAvailSort).map((l) => (
                   <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
@@ -2642,7 +2639,7 @@ export default function BoardApp({
             )}
             {myAssignedMeeting.length > 0 && (
               <>
-                <SectionLabel>PENDING BOOKING</SectionLabel>
+                <SectionLabel large>PENDING BOOKING</SectionLabel>
                 <SortToggle sortBy={pendingBookingSort.by} sortDir={pendingBookingSort.dir} onChange={toggleSectionSort(setPendingBookingSort)} />
                 {sortSection(myAssignedMeeting, pendingBookingSort).map((l) => (
                   <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
@@ -2651,7 +2648,7 @@ export default function BoardApp({
             )}
             {myAwaitingSelection.length > 0 && (
               <>
-                <SectionLabel>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
+                <SectionLabel large>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
                 <SortToggle sortBy={awaitingSelectionSort.by} sortDir={awaitingSelectionSort.dir} onChange={toggleSectionSort(setAwaitingSelectionSort)} />
                 {sortSection(myAwaitingSelection, awaitingSelectionSort).map((l) => (
                   <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
@@ -2742,21 +2739,18 @@ export default function BoardApp({
             {myInstrument && newMusicianLeads.length > 0 && myMusicianChecks.length === 0 && (
               <Empty text="No open leads mention your instrument right now." />
             )}
-            {myMusicianChecks.length > 0 && needsMeMusician.length === 0 && myMusicianMarkedAvailable.length === 0 && (
-              <Empty text="You've responded to everything here — check Pending Booking or Archive." />
-            )}
-            {needsMeMusician.length > 0 && (
+            {needsMeMusician.length > 0 ? (
               <>
-                <SectionLabel>NEED AVAILABILITY</SectionLabel>
+                <SectionLabel large>NEED AVAILABILITY</SectionLabel>
                 <SortToggle sortBy={needAvailMusicianSort.by} sortDir={needAvailMusicianSort.dir} onChange={toggleSectionSort(setNeedAvailMusicianSort)} />
                 {sortSection(needsMeMusician, needAvailMusicianSort).map((l) => (
                   <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
                 ))}
               </>
-            )}
+            ) : myMusicianChecks.length > 0 && <Empty text="All caught up!" />}
             {myMusicianMarkedAvailable.length > 0 && (
               <>
-                <SectionLabel>MARKED AVAILABLE</SectionLabel>
+                <SectionLabel large>MARKED AVAILABLE</SectionLabel>
                 <SortToggle sortBy={markedAvailMusicianSort.by} sortDir={markedAvailMusicianSort.dir} onChange={toggleSectionSort(setMarkedAvailMusicianSort)} />
                 {sortSection(myMusicianMarkedAvailable, markedAvailMusicianSort).map((l) => (
                   <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />

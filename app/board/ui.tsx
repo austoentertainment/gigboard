@@ -163,8 +163,12 @@ export const TextArea = (p: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =
   <textarea {...p} style={{ ...inputStyle, minHeight: 60, resize: "vertical", ...p.style }} />
 );
 
-export const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.16em", color: T.dim, marginTop: 4 }}>
+export const SectionLabel = ({ children, large }: { children: React.ReactNode; large?: boolean }) => (
+  <div style={{
+    fontSize: large ? 16 : 10.5, fontWeight: 800, letterSpacing: large ? "0.06em" : "0.16em",
+    color: large ? T.text : T.dim, marginTop: large ? 10 : 4,
+    fontFamily: large ? "var(--font-heading), serif" : "inherit",
+  }}>
     {children}
   </div>
 );
