@@ -2702,17 +2702,17 @@ export default function BoardApp({
               Gentleman, your winner
             </a>
             <AvatarUpload userId={userId} currentUrl={myLeaderboardRow?.avatar_url ?? null} onChanged={loadData} ping={ping} />
-            <SectionLabel>EVENTS COMPLETED</SectionLabel>
-            <DjBarChart
-              userId={userId}
-              unit="event"
-              rows={completedLeaderboard.map((r) => ({ dj_id: r.dj_id, display_name: r.display_name, email: r.email, avatar_url: r.avatar_url, count: r.completed_count, total: r.completed_total }))}
-            />
             <SectionLabel>EVENTS BOOKED</SectionLabel>
             <DjBarChart
               userId={userId}
               unit="event"
               rows={bookedLeaderboard.map((r) => ({ dj_id: r.dj_id, display_name: r.display_name, email: r.email, avatar_url: r.avatar_url, count: r.booked_count, total: r.booked_total }))}
+            />
+            <SectionLabel>EVENTS COMPLETED</SectionLabel>
+            <DjBarChart
+              userId={userId}
+              unit="event"
+              rows={completedLeaderboard.map((r) => ({ dj_id: r.dj_id, display_name: r.display_name, email: r.email, avatar_url: r.avatar_url, count: r.completed_count, total: r.completed_total }))}
             />
           </>
         )}
