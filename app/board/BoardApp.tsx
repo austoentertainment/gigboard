@@ -2036,6 +2036,7 @@ export default function BoardApp({
   const [sortBy, setSortBy] = useState<"event" | "submitted">(role === "dj" ? "submitted" : "event");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [motionDjFilter, setMotionDjFilter] = useState<string>("all");
+  const [pipelineSort, setPipelineSort] = useState<SectionSort>({ by: "submitted", dir: "desc" });
   const [ownerMeetingBookedSort, setOwnerMeetingBookedSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [ownerFollowUpSort, setOwnerFollowUpSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
   const [needAvailSort, setNeedAvailSort] = useState<SectionSort>({ by: "submitted", dir: "asc" });
@@ -2670,23 +2671,23 @@ export default function BoardApp({
             {headlinerAwaitingMe.length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: TIER_COLORS.Headliner }}>HEADLINER LEADS — YOUR CALL</div>
             )}
-            {sortLeads(headlinerAwaitingMe).map((l) => (
+            {sortSection(headlinerAwaitingMe, pipelineSort).map((l) => (
               <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
-            {checking.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
+            {checking.length > 0 && <SortToggle sortBy={pipelineSort.by} sortDir={pipelineSort.dir} onChange={toggleSectionSort(setPipelineSort)} />}
             {checking.length === 0 && !showAdd && (
               <Empty text="No leads in date check. Import a HoneyBook inquiry and your roster gets pinged for availability." />
             )}
             {checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l)).length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
-            {sortLeads(checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l))).map((l) => (
+            {sortSection(checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l)), pipelineSort).map((l) => (
               <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking" && !isAwaitingMyHeadlinerCall(l)).length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
-            {sortLeads(checking.filter((l) => leadStatus(l) === "checking")).map((l) => (
+            {sortSection(checking.filter((l) => leadStatus(l) === "checking"), pipelineSort).map((l) => (
               <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
