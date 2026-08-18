@@ -1853,6 +1853,98 @@ function NextEventCard({
   );
 }
 
+const calNavBtnStyle: React.CSSProperties = {
+  background: "transparent", border: `1px solid ${T.line}`, borderRadius: 6, color: T.dim,
+  width: 26, height: 26, fontSize: 15, fontFamily: "inherit", cursor: "pointer", lineHeight: 1,
+};
+
+// Month grid of a talent's own gigs — a dot marks any day with a booked
+// or completed event; clicking one jumps to that lead's card in the
+// matching list tab rather than duplicating card content here.
+function GigCalendar({
+  events, onSelectEvent,
+}: { events: { id: string; date: string; done: boolean }[]; onSelectEvent: (id: string, done: boolean) => void }) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  const byDate = new Map<string, { id: string; done: boolean }[]>();
+  for (const e of events) {
+    if (!e.date) continue;
+    const list = byDate.get(e.date) ?? [];
+    list.push(e);
+    byDate.set(e.date, list);
+  }
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const first = new Date(viewYear, viewMonth, 1);
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(first.getDay()).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const isToday = (day: number) => day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+
+  return (
+    <div style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          type="button"
+          aria-label="Previous month"
+          onClick={() => {
+            if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+            else setViewMonth((m) => m - 1);
+          }}
+          style={calNavBtnStyle}
+        >
+          ‹
+        </button>
+        <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: "0.08em", fontFamily: "var(--font-heading), serif" }}>
+          {first.toLocaleString("en-US", { month: "long", year: "numeric" }).toUpperCase()}
+        </div>
+        <button
+          type="button"
+          aria-label="Next month"
+          onClick={() => {
+            if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+            else setViewMonth((m) => m + 1);
+          }}
+          style={calNavBtnStyle}
+        >
+          ›
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          <div key={i} style={{ fontSize: 10, fontWeight: 800, color: T.dim, textAlign: "center", padding: "2px 0" }}>{d}</div>
+        ))}
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />;
+          const iso = `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`;
+          const dayEvents = byDate.get(iso) ?? [];
+          const hasEvent = dayEvents.length > 0;
+          return (
+            <div
+              key={i}
+              onClick={hasEvent ? () => onSelectEvent(dayEvents[0].id, dayEvents[0].done) : undefined}
+              style={{
+                aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                borderRadius: 8, cursor: hasEvent ? "pointer" : "default",
+                border: isToday(day) ? `1px solid ${T.accent}` : "1px solid transparent",
+                background: hasEvent ? T.raised : "transparent",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: isToday(day) ? 900 : 600, color: hasEvent ? T.text : T.dim }}>{day}</div>
+              {hasEvent && <span style={{ width: 5, height: 5, borderRadius: "50%", background: dayEvents[0].done ? T.blue : T.green }} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function BoardApp({
   userId,
   displayName,
@@ -1881,6 +1973,7 @@ export default function BoardApp({
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [tab, setTab] = useState("pipeline");
+  const [calHighlightId, setCalHighlightId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
@@ -1990,6 +2083,15 @@ export default function BoardApp({
     if (!highlightLeadId || leads.length === 0) return;
     document.getElementById(`lead-${highlightLeadId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [highlightLeadId, leads]);
+
+  // Calendar-driven jumps switch tabs first, so the target card doesn't
+  // exist in the DOM until the destination tab's own render commits —
+  // re-run on `tab` too, not just calHighlightId, so the scroll fires
+  // post-switch.
+  useEffect(() => {
+    if (!calHighlightId) return;
+    document.getElementById(`lead-${calHighlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [calHighlightId, tab]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -2363,6 +2465,11 @@ export default function BoardApp({
   const tabs = role === "owner" ? ownerTabs : role === "dj" ? djTabs : musicianTabs;
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
 
+  const goToCalendarEvent = (leadId: string, targetTab: string) => {
+    setCalHighlightId(leadId);
+    setTab(targetTab);
+  };
+
   return (
     <div style={{ background: T.bg, minHeight: "100vh", color: T.text, fontFamily: "var(--font-body), system-ui, -apple-system, sans-serif" }}>
       <style>{`
@@ -2596,6 +2703,14 @@ export default function BoardApp({
               emptyText="No upcoming events booked yet."
               onView={() => setTab("upcoming")}
             />
+            <SectionLabel>YOUR CALENDAR</SectionLabel>
+            <GigCalendar
+              events={[
+                ...myUpcoming.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: false })),
+                ...myCompleted.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: true })),
+              ]}
+              onSelectEvent={(id, done) => goToCalendarEvent(id, done ? "completed" : "upcoming")}
+            />
           </>
         )}
 
@@ -2674,7 +2789,7 @@ export default function BoardApp({
           <>
             {myUpcoming.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myUpcoming.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === calHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -2683,7 +2798,7 @@ export default function BoardApp({
           <>
             {myCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed and you've been paid in full." />}
             {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === calHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -2728,6 +2843,14 @@ export default function BoardApp({
               subtitle={nextMusicianBooking?.services?.join(", ") || ""}
               emptyText="No upcoming events booked yet."
               onView={() => setTab("musician-upcoming")}
+            />
+            <SectionLabel>YOUR CALENDAR</SectionLabel>
+            <GigCalendar
+              events={[
+                ...myMusicianPlanning.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: false })),
+                ...myMusicianComplete.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: true })),
+              ]}
+              onSelectEvent={(id, done) => goToCalendarEvent(id, done ? "musician-completed" : "musician-upcoming")}
             />
           </>
         )}
@@ -2789,7 +2912,7 @@ export default function BoardApp({
             {myMusicianPlanning.length === 0 && <Empty text="No gigs booked yet — Austin will add you to a lead once a client books live music." />}
             {myMusicianPlanning.sort(byDate).map((l) => {
               const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
-              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
+              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId || l.id === calHighlightId} /> : null;
             })}
           </>
         )}
@@ -2799,7 +2922,7 @@ export default function BoardApp({
             {myMusicianComplete.length === 0 && <Empty text="Completed gigs show up here once the event has passed." />}
             {myMusicianComplete.sort((a, b) => byDate(b, a)).map((l) => {
               const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
-              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId} /> : null;
+              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId || l.id === calHighlightId} /> : null;
             })}
           </>
         )}
