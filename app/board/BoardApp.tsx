@@ -2539,7 +2539,7 @@ export default function BoardApp({
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
     { id: "musician-pending", label: "PENDING", count: myMusicianPendingBooking.length },
     { id: "musician-upcoming", label: "UPCOMING", count: myMusicianPlanning.length },
-    { id: "musician-completed", label: "COMPLETE", count: 0 },
+    { id: "musician-completed", label: "PAST", count: 0 },
     { id: "musician-archive", label: "ARCHIVE", count: myMusicianArchive.length },
   ];
   const tabs = role === "owner" ? ownerTabs : role === "dj" ? djTabs : musicianTabs;
