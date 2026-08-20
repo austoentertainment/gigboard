@@ -2199,6 +2199,11 @@ export default function BoardApp({
     if (error) { ping(friendlyError(error)); return; }
     ping("Musician meeting booked — 14-day hold started");
     loadData();
+    fetch("/api/notify/musician-hold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leadId }),
+    }).catch(() => {});
   };
 
   // Booking a musician here also finalizes the lead as booked (whether or

@@ -73,6 +73,104 @@ export async function notifyDjsOfNewLead(lead: Lead) {
   }
 }
 
+function leadSummaryHtml(lead: Lead) {
+  const d = fmtDate(lead.event_date);
+  const dateStr = `${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`;
+  const names = escapeHtml([lead.client_name, lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead");
+  const location = escapeHtml(lead.location || "TBD");
+  return `
+    <p><strong>Couple:</strong> ${names}</p>
+    <p><strong>Event Date:</strong> ${dateStr}</p>
+    <p><strong>Venue/Location:</strong> ${location}</p>
+  `;
+}
+
+// The 14-day hold window — same constant the board's own "HOLD DATE" vs
+// "FOLLOW UP" tag logic uses (see leadStatus in app/board/BoardApp.tsx),
+// so an email and the live board tag never disagree about when a hold
+// ends.
+const HOLD_DAYS = 14;
+function holdUntilDate(meetingDate: string) {
+  return new Date(new Date(meetingDate + "T12:00:00").getTime() + HOLD_DAYS * 24 * 60 * 60 * 1000);
+}
+
+// Musicians who said "available" on this lead — once the owner's booked
+// a first meeting, everyone still in the running has already answered
+// yes, so "available responders" (not "instrument match") is the right
+// audience for both the hold and release emails.
+export async function musiciansAvailableOn(admin: ReturnType<typeof createAdminClient>, leadId: string) {
+  const { data: avail } = await admin
+    .from("availability_responses")
+    .select("dj_user_id")
+    .eq("lead_id", leadId)
+    .eq("response", "available");
+  const responderIds = (avail ?? []).map((a) => a.dj_user_id);
+  if (responderIds.length === 0) return [];
+
+  const { data: musicians } = await admin
+    .from("users")
+    .select("id, email, display_name")
+    .eq("role", "musician")
+    .in("id", responderIds);
+  if (!musicians || musicians.length === 0) return [];
+
+  const { data: profiles } = await admin
+    .from("dj_profiles")
+    .select("user_id, notify_email")
+    .in("user_id", musicians.map((m) => m.id));
+  return musicians.filter((m) => profiles?.find((p) => p.user_id === m.id)?.notify_email !== false);
+}
+
+// Fires the moment the owner books a first meeting and the lead moves
+// from a musician's Date Checks into Pending — see musicianMeetingBooked
+// in app/board/BoardApp.tsx, which calls /api/notify/musician-hold right
+// after the DB update succeeds.
+export async function notifyMusiciansOfHold(lead: Lead) {
+  if (!lead.musician_meeting_date) return;
+  const admin = createAdminClient();
+  const musicians = await musiciansAvailableOn(admin, lead.id);
+  if (musicians.length === 0) return;
+
+  const d = fmtDate(lead.event_date);
+  const dateStr = `${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`;
+  const holdUntilStr = holdUntilDate(lead.musician_meeting_date).toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric", year: "numeric",
+  });
+  const link = `${SITE_URL}/board?lead=${lead.id}`;
+
+  for (const musician of musicians) {
+    await sendEmail({
+      to: musician.email,
+      subject: `Hold the date — ${dateStr}`,
+      html: `
+        <p>Hey ${musician.display_name || "there"} — a meeting has been booked with this potential booking! Please hold the date for 2 weeks.</p>
+        ${leadSummaryHtml(lead)}
+        <p><strong>Hold Until:</strong> ${holdUntilStr}</p>
+        <p><a href="${link}">View on the board →</a></p>
+      `,
+    });
+  }
+}
+
+// Cron-only counterpart to notifyMusiciansOfHold — see the daily sweep in
+// app/api/cron/reminders/route.ts, which finds leads whose 14-day hold
+// just expired and calls this once per still-available musician on it.
+export async function notifyMusicianOfRelease(lead: Lead, musician: { email: string; display_name: string | null }) {
+  const d = fmtDate(lead.event_date);
+  const dateStr = `${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`;
+  const link = `${SITE_URL}/board?lead=${lead.id}`;
+
+  await sendEmail({
+    to: musician.email,
+    subject: `You're free to release this date — ${dateStr}`,
+    html: `
+      <p>Hey ${musician.display_name || "there"} — the 2-week hold on this date has passed. You're free to release it and book other events.</p>
+      ${leadSummaryHtml(lead)}
+      <p><a href="${link}">View on the board →</a></p>
+    `,
+  });
+}
+
 export async function notifyMusiciansOfNewLead(lead: Lead) {
   const admin = createAdminClient();
 
