@@ -562,10 +562,11 @@ function MusicianBooking({
   onBook: (leadId: string, musicianId: string) => void;
   onUnbook: (id: string, label: string) => void;
   onUpdate: (id: string, patch: { services?: MusicianService[]; payout?: number | null; deposit_paid?: boolean; paid_in_full?: boolean }, msg?: string) => void;
-  // While pending_booking, new bookings only happen through the "MARK
-  // BOOKED — {musician}" actions above (which also finalize the lead), so
-  // the plain "+ BOOK" button is hidden to avoid a second, inconsistent
-  // path to the same result. Already-booked rows still show normally.
+  // Musicians only ever come as part of a DJ package, never booked on
+  // their own — so the plain "+ BOOK" shortcut is hidden any time the
+  // lead's DJ side isn't booked yet (status !== "booked"), forcing that
+  // case through the "MARK BOOKED — {musician}" action above instead,
+  // which sets both at once. Already-booked rows still show normally.
   disableNewBookings?: boolean;
 }) {
   if (musicianRoster.length === 0) return null;
@@ -922,7 +923,7 @@ function LeadCard({
             onBook={onBookMusician}
             onUnbook={onUnbookMusician}
             onUpdate={onUpdateMusicianBooking}
-            disableNewBookings={lead.musician_stage === "pending_booking"}
+            disableNewBookings={lead.status !== "booked"}
           />
         )}
 
