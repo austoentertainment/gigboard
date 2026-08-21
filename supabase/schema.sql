@@ -381,6 +381,29 @@ create trigger trg_log_availability_response
   for each row execute function public.log_availability_response();
 
 -- ============================================================
+-- email_log — every email the app has attempted to send
+-- ============================================================
+-- Written from lib/email.ts's sendEmail() — the one function every email
+-- type (new-lead, availability, musician hold/release, reminder digests)
+-- already routes through, so logging there covers all of them for free.
+-- failed=true means Resend rejected the send; the row's still kept so a
+-- failure is visible instead of silently vanishing.
+
+create table public.email_log (
+  id uuid primary key default gen_random_uuid(),
+  to_email text not null,
+  subject text not null,
+  html text not null,
+  failed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.email_log enable row level security;
+
+create policy "email_log_owner_select" on public.email_log
+  for select using (public.is_owner());
+
+-- ============================================================
 -- leads_feed — the view every client query goes through
 -- ============================================================
 -- Owned by the SQL-editor role (bypasses RLS), so it can apply its own

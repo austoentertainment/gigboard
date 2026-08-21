@@ -1358,6 +1358,105 @@ function RosterEmailEditor({
   );
 }
 
+// Tucked at the bottom of Roster behind a plain text toggle rather than
+// its own tab — this is a debugging/audit tool Austin reaches for
+// occasionally, not something that needs top-level nav real estate.
+function EmailLogSection({ ping }: { ping: (m: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [emails, setEmails] = useState<{ id: string; to_email: string; subject: string; html: string; failed: boolean; created_at: string }[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [hours, setHours] = useState(48);
+
+  const load = async (h: number) => {
+    setLoading(true);
+    const res = await fetch(`/api/email-log?hours=${h}`);
+    const data = await res.json().catch(() => ({}));
+    setLoading(false);
+    if (!res.ok) { ping(data.error || "Couldn't load the email log"); return; }
+    setEmails(data.emails ?? []);
+  };
+
+  const toggleOpen = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) load(hours);
+  };
+
+  const changeWindow = (h: number) => {
+    setHours(h);
+    load(h);
+  };
+
+  const windows = [{ label: "48H", h: 48 }, { label: "7 DAYS", h: 24 * 7 }, { label: "30 DAYS", h: 24 * 30 }];
+
+  return (
+    <div style={{ marginTop: 4, paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
+      <button
+        onClick={toggleOpen}
+        style={{ background: "none", border: "none", color: T.dim, fontSize: 11.5, fontFamily: "inherit", cursor: "pointer", textDecoration: "underline", padding: 0 }}
+      >
+        {open ? "Hide email log" : "Show email log"}
+      </button>
+      {open && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {windows.map((w) => (
+              <button
+                key={w.h}
+                onClick={() => changeWindow(w.h)}
+                style={{
+                  fontFamily: "inherit", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+                  padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                  background: hours === w.h ? T.teal : "transparent",
+                  color: hours === w.h ? T.text : T.dim,
+                  border: `1px solid ${hours === w.h ? T.teal : T.line}`,
+                }}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+          {loading && <div style={{ fontSize: 12, color: T.dim }}>Loading…</div>}
+          {!loading && emails.length === 0 && <Empty text="No emails sent in this window." />}
+          {!loading && emails.map((e) => {
+            const expanded = expandedId === e.id;
+            return (
+              <div key={e.id} style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 14px" }}>
+                <div
+                  onClick={() => setExpandedId(expanded ? null : e.id)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, cursor: "pointer" }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{e.subject}</div>
+                    <div style={{ fontSize: 11.5, color: T.dim }}>{e.to_email}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    {e.failed && <Tag color={T.red}>FAILED</Tag>}
+                    <span style={{ fontSize: 11, color: T.dim, whiteSpace: "nowrap" }}>{new Date(e.created_at).toLocaleString("en-US")}</span>
+                    <span style={{ color: T.dim }}>{expanded ? "▲" : "▼"}</span>
+                  </div>
+                </div>
+                {expanded && (
+                  <iframe
+                    // Empty sandbox — no scripts, forms, or same-origin access.
+                    // Some fields these emails interpolate (e.g. a lead's
+                    // location) aren't HTML-escaped, so this is rendered as an
+                    // untrusted document rather than trusted app content.
+                    sandbox=""
+                    srcDoc={e.html}
+                    style={{ marginTop: 10, width: "100%", height: 260, border: `1px solid ${T.line}`, borderRadius: 6, background: "#fff" }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Roster({
   roster, musicianRoster, rosterProfiles, leads, leadMusicians, onChanged, onSetTiers, onSetNotify, onSetInstrument, ping, confirm,
 }: {
@@ -1586,6 +1685,8 @@ function Roster({
           </div>
         );
       })}
+
+      <EmailLogSection ping={ping} />
     </div>
   );
 }

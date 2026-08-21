@@ -209,6 +209,24 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+      email_log: {
+        Row: {
+          id: string;
+          to_email: string;
+          subject: string;
+          html: string;
+          failed: boolean;
+          created_at: string;
+        };
+        Insert: {
+          to_email: string;
+          subject: string;
+          html: string;
+          failed?: boolean;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       company_settings: {
         Row: {
           id: number;
