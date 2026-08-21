@@ -113,8 +113,26 @@ export async function GET(request: Request) {
   let musicianReminded = 0;
 
   if (digestDue) {
-    const { data: checkingLeads } = await admin.from("leads").select("*").eq("status", "checking");
-    if (checkingLeads && checkingLeads.length > 0) {
+    const { data: rawCheckingLeads } = await admin.from("leads").select("*").eq("status", "checking");
+    // Headliner leads stay hidden from every DJ but the owner until he
+    // personally passes — same rule leads_feed enforces for what a DJ can
+    // even see on the board (see the view's WHERE clause in schema.sql).
+    // Reminding a DJ about one he can't see yet was the bug behind "I got
+    // a Date Check email but there's nothing on my board."
+    let checkingLeads = rawCheckingLeads ?? [];
+    const headlinerLeadIds = checkingLeads.filter((l) => l.dj_tier === "Headliner").map((l) => l.id);
+    if (headlinerLeadIds.length > 0) {
+      const { data: owners } = await admin.from("users").select("id").eq("role", "owner");
+      const { data: ownerPasses } = await admin
+        .from("availability_responses")
+        .select("lead_id")
+        .eq("response", "pass")
+        .in("dj_user_id", (owners ?? []).map((o) => o.id))
+        .in("lead_id", headlinerLeadIds);
+      const ownerPassedLeadIds = new Set((ownerPasses ?? []).map((p) => p.lead_id));
+      checkingLeads = checkingLeads.filter((l) => l.dj_tier !== "Headliner" || ownerPassedLeadIds.has(l.id));
+    }
+    if (checkingLeads.length > 0) {
       const { data: djs } = await admin.from("users").select("id, email, display_name").eq("role", "dj");
       const { data: djProfiles } = await admin
         .from("dj_profiles")
