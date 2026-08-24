@@ -1,3 +1,6 @@
+import { INSTRUMENT_KEYWORD } from "./instruments";
+import type { Instrument } from "./supabase/types";
+
 export type ParsedLead = {
   name: string;
   fiance: string;
@@ -19,7 +22,7 @@ const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBoo
 - location: venue and/or city as one line (e.g. "The Colony House, Anaheim")
 - djTier: one of Headliner, Resident, Associate — only if the inquiry names a DJ tier or package that clearly maps to one
 - prodTier: one of Marquee, Modern, Essential — only if the inquiry names a production tier/package that clearly maps to one
-- upgrades: comma-separated add-ons mentioned (photo booth / Guac Booth, CO2, cold sparks, uplighting, custom lighting, ceremony audio, etc.) — if the client asks for a live saxophonist or violinist for any part of the event, include the literal word "Saxophone" or "Violin" here so it can be matched later
+- upgrades: comma-separated add-ons mentioned (photo booth / Guac Booth, CO2, cold sparks, uplighting, custom lighting, ceremony audio, etc.) — if a live saxophonist or violinist is wanted for any part of the event, include the literal word "Saxophone" or "Violin" here so it can be matched later. This includes ANY mention at all, not just a clearly worded request — a raw form field/checkbox like "Instruments: Violin" or "Add-ons: Sax" counts just as much as a sentence asking for one
 - vision: 1-3 sentences capturing what the client says they want the event to feel like, in their words where possible
 - travelZone: one of Local, Extended Local, Regional, Central CA, based on the event location's distance from Orange County — use your knowledge of California geography to classify it, even if the exact city isn't in these examples:
   - Local: Greater Orange County, San Clemente, Fullerton, Long Beach
@@ -79,6 +82,23 @@ export async function parseLeadWithClaude(raw: string): Promise<ParsedLead> {
     // in — this is the field every display and email actually shows first,
     // so a single name must never end up stranded in "fiance" alone.
     if (!name && fiance) { name = fiance; fiance = ""; }
+    let upgrades = obj.upgrades || "";
+    const vision = obj.vision || "";
+    // Deterministic backstop, independent of how well the prompt above
+    // works: instrument matching downstream (see lib/instruments.ts) keys
+    // off the literal word "Violin"/"Saxophone" appearing in upgrades or
+    // vision. If that word shows up anywhere in the raw inquiry at all —
+    // including a raw form field the model didn't recognize as an
+    // add-on request — force it into upgrades so a musician's Date Check
+    // can never silently miss it due to an extraction miss.
+    const rawLower = raw.toLowerCase();
+    const captured = `${upgrades} ${vision}`.toLowerCase();
+    for (const instrument of Object.keys(INSTRUMENT_KEYWORD) as Instrument[]) {
+      const keyword = INSTRUMENT_KEYWORD[instrument];
+      if (rawLower.includes(keyword) && !captured.includes(keyword)) {
+        upgrades = upgrades ? `${upgrades}, ${instrument}` : instrument;
+      }
+    }
     return {
       name,
       fiance,
@@ -87,8 +107,8 @@ export async function parseLeadWithClaude(raw: string): Promise<ParsedLead> {
       location: obj.location || "",
       djTier: ["Headliner", "Resident", "Associate"].includes(obj.djTier) ? obj.djTier : "",
       prodTier: ["Marquee", "Modern", "Essential"].includes(obj.prodTier) ? obj.prodTier : "",
-      upgrades: obj.upgrades || "",
-      vision: obj.vision || "",
+      upgrades,
+      vision,
       travelZone: ["Local", "Extended Local", "Regional", "Central CA"].includes(obj.travelZone) ? obj.travelZone : "",
     };
   } catch {
