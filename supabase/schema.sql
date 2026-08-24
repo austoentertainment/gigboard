@@ -178,7 +178,10 @@ create table public.leads (
   contact text,
   event_date date,
   location text,
-  dj_tier text check (dj_tier in ('Headliner', 'Resident', 'Associate')),
+  -- 'Any' means the fee's open and every DJ gets notified, regardless of
+  -- their own dj_tier_visibility qualification (see the tierMatches
+  -- checks in lib/notifications.ts and app/api/cron/reminders/route.ts).
+  dj_tier text check (dj_tier in ('Headliner', 'Resident', 'Associate', 'Any')),
   prod_tier text check (prod_tier in ('Marquee', 'Modern', 'Essential')),
   upgrades text,
   client_vision text,

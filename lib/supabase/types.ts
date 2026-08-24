@@ -1,5 +1,8 @@
 export type LeadStatus = "checking" | "meeting" | "booked" | "played" | "lost";
-export type DjTier = "Headliner" | "Resident" | "Associate";
+// "Any" only ever appears as a lead's dj_tier (an open-fee, notify-
+// everyone lead) — never in a DJ's own dj_tier_visibility, which the
+// Roster UI restricts to the three real qualification tiers.
+export type DjTier = "Headliner" | "Resident" | "Associate" | "Any";
 export type ProdTier = "Marquee" | "Modern" | "Essential";
 export type TravelZone = "Local" | "Extended Local" | "Regional" | "Central CA";
 export type LeadSource = "honeybook" | "manual";

@@ -15,6 +15,12 @@ export const T = {
 };
 
 export const DJ_TIERS = ["Headliner", "Resident", "Associate"] as const;
+// "Any" is a lead-level dj_tier value, not a DJ qualification — it means
+// the fee's open (no rate to auto-suggest) and every DJ gets notified,
+// regardless of their own tier_visibility. Kept out of DJ_TIERS so it
+// never shows up as a per-DJ qualification checkbox in Roster, only as
+// an extra option on a lead's own tier picker.
+export const LEAD_DJ_TIERS = [...DJ_TIERS, "Any"] as const;
 export const PROD_TIERS = ["Marquee", "Modern", "Essential"] as const;
 export const TRAVEL_ZONES = ["Local", "Extended Local", "Regional", "Central CA"] as const;
 export const MUSICIAN_INSTRUMENTS = ["Saxophone", "Violin"] as const;
@@ -30,6 +36,7 @@ export const TIER_COLORS: Record<string, string> = {
   Modern: "#C8CDD2",
   Associate: "#C68A4E",
   Essential: "#C68A4E",
+  Any: T.blue,
 };
 
 export const INSTRUMENT_COLORS: Record<string, string> = {
@@ -190,7 +197,7 @@ export const TierPicker = ({
     <Field label="TIER — DJ">
       <Select value={djTier} onChange={(e) => onChange({ djTier: e.target.value, prodTier })}>
         <option value="">Pick DJ tier…</option>
-        {DJ_TIERS.map((t) => <option key={t}>{t}</option>)}
+        {LEAD_DJ_TIERS.map((t) => <option key={t}>{t}</option>)}
       </Select>
     </Field>
     <Field label="TIER — PRODUCTION">

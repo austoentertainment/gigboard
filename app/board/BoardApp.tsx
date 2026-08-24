@@ -1139,14 +1139,14 @@ function ImportForm({
           <Field label="LOCATION"><Input value={parsed.location} onChange={(e) => setParsed({ ...parsed, location: e.target.value })} placeholder="The Colony House, Anaheim" /></Field>
           <TierPicker djTier={parsed.djTier} prodTier={parsed.prodTier} onChange={({ djTier, prodTier }) => {
             const next = { ...parsed, djTier, prodTier };
-            if (!parsed.payout && djTier && prodTier) next.payout = String(tierRate(companySettings, djTier, prodTier));
+            if (!parsed.payout && djTier && djTier !== "Any" && prodTier) next.payout = String(tierRate(companySettings, djTier, prodTier));
             setParsed(next);
           }} />
           <SectionLabel>PRICING</SectionLabel>
           <Field label="DJ PAYOUT ($) — SHOWN TO DJs">
             <div style={{ display: "flex", gap: 6 }}>
               <Input type="number" value={parsed.payout} onChange={(e) => setParsed({ ...parsed, payout: e.target.value })} style={{ flex: 1 }} />
-              {parsed.djTier && parsed.prodTier && (
+              {parsed.djTier && parsed.djTier !== "Any" && parsed.prodTier && (
                 <Btn small onClick={() => setParsed({ ...parsed, payout: String(tierRate(companySettings, parsed.djTier, parsed.prodTier)) })}>
                   USE ${tierRate(companySettings, parsed.djTier, parsed.prodTier)}
                 </Btn>
@@ -1211,7 +1211,7 @@ function ManualForm({
       </Field>
       <TierPicker djTier={f.djTier} prodTier={f.prodTier} onChange={({ djTier, prodTier }) => {
         const next = { ...f, djTier, prodTier };
-        if (!f.payout && djTier && prodTier) next.payout = String(tierRate(companySettings, djTier, prodTier));
+        if (!f.payout && djTier && djTier !== "Any" && prodTier) next.payout = String(tierRate(companySettings, djTier, prodTier));
         setF(next);
       }} />
       <Field label="UPGRADES"><Input value={f.upgrades} onChange={set("upgrades")} placeholder="Guac Booth, CO2, uplighting…" /></Field>
@@ -1222,7 +1222,7 @@ function ManualForm({
         <Field label="DJ PAYOUT ($) — SHOWN TO DJs">
           <div style={{ display: "flex", gap: 6 }}>
             <Input type="number" value={f.payout} onChange={set("payout")} style={{ flex: 1 }} />
-            {f.djTier && f.prodTier && (
+            {f.djTier && f.djTier !== "Any" && f.prodTier && (
               <Btn small onClick={() => setF({ ...f, payout: String(tierRate(companySettings, f.djTier, f.prodTier)) })}>
                 USE ${tierRate(companySettings, f.djTier, f.prodTier)}
               </Btn>
@@ -2528,7 +2528,7 @@ export default function BoardApp({
   // myTiers means the owner hasn't qualified this DJ for any tier yet — that
   // no longer means "show everything" (a preference default), it means
   // "not qualified for anything yet" (an eligibility default).
-  const tierVisible = (l: LeadRow) => !l.dj_tier || myTiers.includes(l.dj_tier);
+  const tierVisible = (l: LeadRow) => !l.dj_tier || l.dj_tier === "Any" || myTiers.includes(l.dj_tier);
   const myChecks = checking.filter(tierVisible);
   // Date Checks splits into two: ones I haven't answered yet, and ones
   // I've already marked myself available for but Austin hasn't booked a

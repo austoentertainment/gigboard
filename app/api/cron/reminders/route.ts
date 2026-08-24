@@ -148,11 +148,12 @@ export async function GET(request: Request) {
         const profile = djProfiles?.find((p) => p.user_id === dj.id);
         if (profile && profile.notify_email === false) continue;
         // Empty visibility means not qualified for anything yet — same
-        // rule as everywhere else this tier check appears.
+        // rule as everywhere else this tier check appears. 'Any' is the
+        // one exception: every DJ counts regardless of qualification.
         const visibility = (profile?.dj_tier_visibility ?? []) as DjTier[];
 
         const pending = checkingLeads.filter((lead) => {
-          const tierMatches = !lead.dj_tier || visibility.includes(lead.dj_tier as DjTier);
+          const tierMatches = !lead.dj_tier || lead.dj_tier === "Any" || visibility.includes(lead.dj_tier as DjTier);
           return tierMatches && !respondedPairs.has(`${lead.id}:${dj.id}`);
         });
         if (pending.length === 0) continue;
