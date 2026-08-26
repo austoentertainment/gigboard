@@ -123,16 +123,8 @@ export async function musiciansAvailableOn(admin: ReturnType<typeof createAdminC
   return musicians.filter((m) => profiles?.find((p) => p.user_id === m.id)?.notify_email !== false);
 }
 
-// Fires the moment the owner books a first meeting and the lead moves
-// from a musician's Date Checks into Pending — see musicianMeetingBooked
-// in app/board/BoardApp.tsx, which calls /api/notify/musician-hold right
-// after the DB update succeeds.
-export async function notifyMusiciansOfHold(lead: Lead) {
+async function sendHoldEmail(lead: Lead, musician: { email: string; display_name: string | null }) {
   if (!lead.musician_meeting_date) return;
-  const admin = createAdminClient();
-  const musicians = await musiciansAvailableOn(admin, lead.id);
-  if (musicians.length === 0) return;
-
   const d = fmtDate(lead.event_date);
   const dateStr = `${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`;
   const holdUntilStr = holdUntilDate(lead.musician_meeting_date).toLocaleDateString("en-US", {
@@ -140,18 +132,41 @@ export async function notifyMusiciansOfHold(lead: Lead) {
   });
   const link = `${SITE_URL}/board?lead=${lead.id}`;
 
-  for (const musician of musicians) {
-    await sendEmail({
-      to: musician.email,
-      subject: `Hold the date — ${dateStr}`,
-      html: `
-        <p>Hey ${musician.display_name || "there"} — a meeting has been booked with this potential booking! Please hold the date for 2 weeks.</p>
-        ${leadSummaryHtml(lead)}
-        <p><strong>Hold Until:</strong> ${holdUntilStr}</p>
-        <p><a href="${link}">View on the board →</a></p>
-      `,
-    });
-  }
+  await sendEmail({
+    to: musician.email,
+    subject: `Hold the date — ${dateStr}`,
+    html: `
+      <p>Hey ${musician.display_name || "there"} — a meeting has been booked with this potential booking! Please hold the date for 2 weeks.</p>
+      ${leadSummaryHtml(lead)}
+      <p><strong>Hold Until:</strong> ${holdUntilStr}</p>
+      <p><a href="${link}">View on the board →</a></p>
+    `,
+  });
+}
+
+// Fires the moment the owner books a first meeting and the lead moves
+// from a musician's Date Checks into Pending — see musicianMeetingBooked
+// in app/board/BoardApp.tsx, which calls /api/notify/musician-hold right
+// after the DB update succeeds. Notifies every musician who's currently
+// available on the lead.
+export async function notifyMusiciansOfHold(lead: Lead) {
+  const admin = createAdminClient();
+  const musicians = await musiciansAvailableOn(admin, lead.id);
+  for (const musician of musicians) await sendHoldEmail(lead, musician);
+}
+
+// Single-recipient counterpart used by the "ADD TO HOLD" manual shortcut
+// (see addMusicianToHold in app/board/BoardApp.tsx) — only the musician
+// just added should hear about it, not everyone already on hold for this
+// lead, so this skips musiciansAvailableOn's broad lookup and just checks
+// that one musician's own notify_email preference.
+export async function notifyMusicianOfHold(lead: Lead, musicianId: string) {
+  const admin = createAdminClient();
+  const { data: musician } = await admin.from("users").select("email, display_name").eq("id", musicianId).single();
+  if (!musician) return;
+  const { data: profile } = await admin.from("dj_profiles").select("notify_email").eq("user_id", musicianId).maybeSingle();
+  if (profile?.notify_email === false) return;
+  await sendHoldEmail(lead, musician);
 }
 
 // Cron-only counterpart to notifyMusiciansOfHold — see the daily sweep in
