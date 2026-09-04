@@ -2240,7 +2240,16 @@ export default function BoardApp({
   // language instead.
   const friendlyError = useCallback((error: { message: string }) => {
     console.error(error.message);
-    return "Something went wrong — try again.";
+    // A bare "try again" sent us digging through the browser console to
+    // find out that the DB was rejecting a new dj_tier the UI had shipped
+    // ahead of its migration. Check-constraint violations name the
+    // constraint, which is the single most useful thing to surface — it
+    // says which column the DB hasn't been taught about yet.
+    const constraint = /violates check constraint "([^"]+)"/.exec(error.message)?.[1];
+    if (constraint) {
+      return `The database rejected a value (${constraint}) — a migration is probably missing.`;
+    }
+    return `Something went wrong — ${error.message}`;
   }, []);
 
   const loadData = useCallback(async () => {
