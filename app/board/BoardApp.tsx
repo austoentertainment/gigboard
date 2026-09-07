@@ -748,6 +748,12 @@ function LeadCard({
     || lead.musician_stage !== "new"
     || leadMusicians.some((lm) => lm.lead_id === lead.id)
   );
+  // needs_review means the travel fee was guessed from the location text
+  // and the owner hasn't confirmed it yet (see the honeybook intake
+  // route). The lead goes live either way, so rather than hiding it, the
+  // rate reads as provisional to DJs until it's approved — a tilde and an
+  // EST. chip at a glance, spelled out in words once expanded.
+  const rateEstimated = !!djView && lead.needs_review;
   // A musician has no way to see when the client meeting actually happens
   // — assigning the DJ is the closest real-world signal Austin has for
   // "the meeting's locked in," so it doubles as the musician-side meeting-
@@ -856,8 +862,16 @@ function LeadCard({
           {(totalPayout(lead) > 0 || lead.vibo_link) && (
             <div className="lead-total-row" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
               {totalPayout(lead) > 0 && (
-                <div style={{ fontSize: 20, fontWeight: 900, color: T.text }}>
-                  ${totalPayout(lead)}
+                <div
+                  title={rateEstimated ? "Travel fee is still being confirmed — this total may change." : undefined}
+                  style={{ display: "flex", alignItems: "baseline", gap: 5 }}
+                >
+                  <div style={{ fontSize: 20, fontWeight: 900, color: rateEstimated ? T.yellow : T.text }}>
+                    {rateEstimated && "~"}${totalPayout(lead)}
+                  </div>
+                  {rateEstimated && (
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: T.yellow }}>EST.</span>
+                  )}
                 </div>
               )}
               {lead.vibo_link && (
@@ -936,6 +950,12 @@ function LeadCard({
             {totalPayout(lead) > 0 && (
               <span>Total: <strong style={{ color: T.text }}>${totalPayout(lead)}</strong></span>
             )}
+          </div>
+        )}
+
+        {expanded && rateEstimated && (
+          <div style={{ fontSize: 12, color: T.yellow }}>
+            This rate is an estimate — the travel fee is still being confirmed, so your total may change.
           </div>
         )}
 
