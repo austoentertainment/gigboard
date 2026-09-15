@@ -214,6 +214,30 @@ export async function notifyOwnerOfSyncMiss(reason: string, projectTitle: string
   }
 }
 
+// A signed contract on a lead with nobody assigned — the sync stops short
+// of marking it booked, since booking is what tells a DJ the gig is
+// theirs and there's no way to infer who that is from the email.
+export async function notifyOwnerOfUnassignedBooking(lead: Lead, projectTitle: string) {
+  const admin = createAdminClient();
+  const { data: owners } = await admin.from("users").select("email").eq("role", "owner");
+  if (!owners || owners.length === 0) return;
+
+  const link = `${SITE_URL}/board?lead=${lead.id}`;
+  for (const owner of owners) {
+    await sendEmail({
+      to: owner.email,
+      subject: `Contract signed — assign a DJ to ${projectTitle}`,
+      html: `
+        <p>A contract was signed in HoneyBook, but no DJ is assigned to this lead yet — so it hasn't been marked booked.</p>
+        ${leadSummaryHtml(lead)}
+        <p><strong>HoneyBook project:</strong> ${escapeHtml(projectTitle)}</p>
+        <p>Assign a DJ and hit MARK BOOKED to lock it in.</p>
+        <p><a href="${link}">Open the lead →</a></p>
+      `,
+    });
+  }
+}
+
 export async function notifyMusiciansOfNewLead(lead: Lead) {
   const admin = createAdminClient();
 
