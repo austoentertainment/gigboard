@@ -383,6 +383,73 @@ create trigger trg_log_availability_response
   after insert or update or delete on public.availability_responses
   for each row execute function public.log_availability_response();
 
+-- Payments were the one owner action leaving no trace — status changes
+-- have been logged since day one, but flipping DEPOSIT PAID / PAID IN
+-- FULL wrote nothing, so there was no timestamp to show anyone. Only the
+-- false -> true flip is logged; unmarking a payment (a correction) isn't
+-- an event worth notifying about. payee_id is who got paid, which is what
+-- the RLS policy below scopes on.
+create function public.log_lead_payment_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.deposit_paid and not old.deposit_paid then
+    insert into public.events (lead_id, actor_user_id, event_type, detail)
+    values (new.id, auth.uid(), 'payment', jsonb_build_object('kind', 'deposit', 'payee_id', new.assigned_dj_id));
+  end if;
+  if new.paid_in_full and not old.paid_in_full then
+    insert into public.events (lead_id, actor_user_id, event_type, detail)
+    values (new.id, auth.uid(), 'payment', jsonb_build_object('kind', 'final', 'payee_id', new.assigned_dj_id));
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_log_lead_payment
+  after update on public.leads
+  for each row execute function public.log_lead_payment_change();
+
+create function public.log_musician_payment_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.deposit_paid and not old.deposit_paid then
+    insert into public.events (lead_id, actor_user_id, event_type, detail)
+    values (new.lead_id, auth.uid(), 'payment', jsonb_build_object('kind', 'deposit', 'payee_id', new.musician_id));
+  end if;
+  if new.paid_in_full and not old.paid_in_full then
+    insert into public.events (lead_id, actor_user_id, event_type, detail)
+    values (new.lead_id, auth.uid(), 'payment', jsonb_build_object('kind', 'final', 'payee_id', new.musician_id));
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_log_musician_payment
+  after update on public.lead_musicians
+  for each row execute function public.log_musician_payment_change();
+
+-- Lets a DJ or musician read the slice of the audit log that's about
+-- them, for the Activity tab — deliberately narrow: your own payments
+-- only (never anyone else's payout), and the "booked" transition on
+-- leads leads_feed already shows you. Every other event type stays
+-- owner-only, so availability responses don't leak between DJs.
+create policy "events_talent_select" on public.events
+  for select using (
+    (event_type = 'payment' and detail->>'payee_id' = auth.uid()::text)
+    or (
+      event_type = 'status_change'
+      and detail->>'to' = 'booked'
+      and lead_id in (select id from public.leads_feed)
+    )
+  );
+
 -- ============================================================
 -- email_log — every email the app has attempted to send
 -- ============================================================

@@ -2099,7 +2099,7 @@ function countdownLabel(eventDate: string | null) {
   return `in ${days} days`;
 }
 
-type ActivityItem = { lead: LeadRow; meta: string };
+type ActivityItem = { lead: LeadRow; meta: string; note?: string; key?: string };
 type ActivitySection = {
   key: string; label: string; color: string; empty: string; tab: string; items: ActivityItem[];
 };
@@ -2140,7 +2140,7 @@ function ActivityFeed({
                 : "Date TBD";
               return (
                 <div
-                  key={item.lead.id}
+                  key={item.key ?? item.lead.id}
                   onClick={() => onOpen(item.lead.id, section.tab)}
                   style={{
                     display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
@@ -2149,7 +2149,10 @@ function ActivityFeed({
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{names}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+                      {item.note && <span style={{ color: section.color }}>{item.note} · </span>}
+                      {names}
+                    </div>
                     <div style={{ fontSize: 11.5, color: T.dim, marginTop: 2 }}>
                       {dateStr}{item.lead.location ? ` · ${item.lead.location}` : ""}
                     </div>
@@ -2316,6 +2319,7 @@ export default function BoardApp({
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myResponseTimes, setMyResponseTimes] = useState<Record<string, string>>({});
+  const [myEvents, setMyEvents] = useState<Pick<EventRow, "id" | "lead_id" | "event_type" | "detail" | "created_at">[]>([]);
   const [myTiers, setMyTiers] = useState<string[]>([]);
   const [myInstrument, setMyInstrument] = useState<Instrument | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
@@ -2425,6 +2429,17 @@ export default function BoardApp({
       setMyResponseTimes(Object.fromEntries((mine ?? []).map((r) => [r.lead_id, r.responded_at])));
       const { data: prof } = await supabase.from("dj_profiles").select("instrument").eq("user_id", userId).single();
       setMyInstrument((prof?.instrument as Instrument | null) ?? null);
+    }
+    if (role !== "owner") {
+      // RLS (events_talent_select) already narrows this to your own
+      // payments plus "booked" transitions on leads you can see, so
+      // there's nothing to filter by user here.
+      const { data: eventsData } = await supabase
+        .from("events")
+        .select("id, lead_id, event_type, detail, created_at")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      setMyEvents(eventsData ?? []);
     }
     setLoading(false);
   }, [supabase, role, userId]);
@@ -2858,6 +2873,27 @@ export default function BoardApp({
   // every confirmed gig shows up in exactly one of the two sections.
   const ACTIVITY_SOON_DAYS = 30;
   const soon = (l: LeadRow) => !!l.event_date && daysUntil(l.event_date) <= ACTIVITY_SOON_DAYS;
+  // "Booked" and "paid" are moments, not states — they come off the audit
+  // log so they carry the timestamp of when the owner actually did it,
+  // rather than being inferred from the lead's current shape. RLS already
+  // scoped these rows to this user; the lead lookup drops any whose lead
+  // isn't in view.
+  const eventItems = (
+    match: (e: (typeof myEvents)[number]) => boolean,
+    label: (e: (typeof myEvents)[number]) => string,
+  ): ActivityItem[] =>
+    myEvents
+      .filter(match)
+      .map((e): ActivityItem | null => {
+        const lead = leads.find((l) => l.id === e.lead_id);
+        return lead ? { lead, meta: timeAgo(e.created_at), note: label(e), key: e.id } : null;
+      })
+      .filter((i): i is ActivityItem => i !== null);
+  const isBookedEvent = (e: (typeof myEvents)[number]) => e.event_type === "status_change";
+  const isPaymentEvent = (e: (typeof myEvents)[number]) => e.event_type === "payment";
+  const paymentLabel = (e: (typeof myEvents)[number]) =>
+    (e.detail as { kind?: string } | null)?.kind === "final" ? "Paid in full" : "Deposit paid";
+
   const djActivitySections: ActivitySection[] = [
     {
       key: "new", label: "NEW LEADS IN YOUR TIERS", color: T.accent, tab: "checks",
@@ -2873,14 +2909,19 @@ export default function BoardApp({
       ],
     },
     {
-      key: "soon", label: "HAPPENING THIS MONTH", color: T.green, tab: "upcoming",
-      empty: "Nothing on your calendar in the next 30 days.",
-      items: myUpcoming.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+      key: "booked", label: "EVENTS BOOKED", color: T.green, tab: "upcoming",
+      empty: "Nothing newly booked.",
+      items: eventItems(isBookedEvent, () => "Booked"),
     },
     {
-      key: "booked", label: "EVENTS BOOKED", color: T.blue, tab: "upcoming",
-      empty: "No bookings further out yet.",
-      items: myUpcoming.filter((l) => !soon(l)).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+      key: "payments", label: "PAYMENTS MADE", color: T.yellow, tab: "upcoming",
+      empty: "No payments yet.",
+      items: eventItems(isPaymentEvent, paymentLabel),
+    },
+    {
+      key: "soon", label: "UPCOMING THIS MONTH", color: T.blue, tab: "upcoming",
+      empty: "Nothing on your calendar in the next 30 days.",
+      items: myUpcoming.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
     },
   ];
   const musicianActivitySections: ActivitySection[] = [
@@ -2890,7 +2931,7 @@ export default function BoardApp({
       items: [...needsMeMusician].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
     },
     {
-      key: "meetings", label: "MEETINGS BOOKED WITH AUSTO", color: T.yellow, tab: "musician-pending",
+      key: "meetings", label: "MEETINGS BOOKED WITH AUSTO", color: T.violet, tab: "musician-pending",
       empty: "Nothing on hold right now.",
       items: myMusicianPendingBooking.map((l) => {
         const until = holdUntilText(l);
@@ -2898,14 +2939,22 @@ export default function BoardApp({
       }),
     },
     {
-      key: "soon", label: "HAPPENING THIS MONTH", color: T.green, tab: "musician-upcoming",
-      empty: "Nothing on your calendar in the next 30 days.",
-      items: myMusicianPlanning.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+      // Narrower than the DJ version: RLS lets a musician see the booked
+      // event for any lead they answered, but a lead that booked with a
+      // different musician isn't their news — only gigs they're on.
+      key: "booked", label: "EVENTS BOOKED", color: T.green, tab: "musician-upcoming",
+      empty: "Nothing newly booked.",
+      items: eventItems((e) => isBookedEvent(e) && myMusicianLeadIds.has(e.lead_id ?? ""), () => "Booked"),
     },
     {
-      key: "booked", label: "EVENTS BOOKED", color: T.blue, tab: "musician-upcoming",
-      empty: "No bookings further out yet.",
-      items: myMusicianPlanning.filter((l) => !soon(l)).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+      key: "payments", label: "PAYMENTS MADE", color: T.yellow, tab: "musician-upcoming",
+      empty: "No payments yet.",
+      items: eventItems(isPaymentEvent, paymentLabel),
+    },
+    {
+      key: "soon", label: "UPCOMING THIS MONTH", color: T.blue, tab: "musician-upcoming",
+      empty: "Nothing on your calendar in the next 30 days.",
+      items: myMusicianPlanning.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
     },
   ];
 
