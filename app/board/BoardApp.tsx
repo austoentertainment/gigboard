@@ -735,6 +735,11 @@ function LeadCard({
   const s = LEAD_STATUS[st];
   const d = fmtDate(lead.event_date);
   const availDjIds = availability.filter((r) => r.lead_id === lead.id && r.response === "available").map((r) => r.dj_user_id);
+  const passedDjIds = availability.filter((r) => r.lead_id === lead.id && r.response === "pass").map((r) => r.dj_user_id);
+  // Availability orders the assign dropdown rather than filtering it —
+  // whoever said yes floats to the top, non-responders next, anyone who
+  // passed last, but all of them stay selectable.
+  const djAssignRank = (id: string) => (availDjIds.includes(id) ? 0 : passedDjIds.includes(id) ? 2 : 1);
   const tier = tierStr(lead);
   const unpaidPast = isPastEvent(lead) && !lead.paid_in_full && ["booked", "played"].includes(st);
   const assignedDjName = lead.assigned_dj_id ? roster.find((d) => d.id === lead.assigned_dj_id)?.display_name || "Assigned" : null;
@@ -1053,11 +1058,16 @@ function LeadCard({
                 style={{ width: "auto", fontSize: 12, padding: "6px 8px" }}
               >
                 <option value="">Assign DJ…</option>
-                {/* Austin (owner-as-assignable) never answers date checks, so he'd
-                    get filtered out by the availability check below like any other
-                    non-responder — always keep him selectable regardless. */}
-                {(availDjIds.length ? roster.filter((d) => availDjIds.includes(d.id) || d.id === userId) : roster).map((d) => (
-                  <option key={d.id} value={d.id}>{d.display_name || d.email}{availDjIds.includes(d.id) ? " (available)" : ""}</option>
+                {/* Every DJ stays assignable whether or not they answered the
+                    date check — plenty get booked over a call, or never tap
+                    the button, and a lead can only reach this step once
+                    somebody's available, which used to filter everyone else
+                    out entirely. The response shows as a label instead. */}
+                {[...roster].sort((a, b) => djAssignRank(a.id) - djAssignRank(b.id)).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.display_name || d.email}
+                    {availDjIds.includes(d.id) ? " (available)" : passedDjIds.includes(d.id) ? " (passed)" : ""}
+                  </option>
                 ))}
               </Select>
               <Btn
