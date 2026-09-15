@@ -188,6 +188,32 @@ export async function notifyMusicianOfRelease(lead: Lead, musician: { email: str
   });
 }
 
+// The HoneyBook session-scheduled sync deliberately no-ops rather than
+// guessing when it can't pin a session to exactly one lead — but silence
+// is indistinguishable from "the automation never ran", which leaves a
+// booked meeting sitting in Pipeline with nobody aware. This is the only
+// signal that it tried and couldn't.
+export async function notifyOwnerOfSyncMiss(reason: string, projectTitle: string | null) {
+  const admin = createAdminClient();
+  const { data: owners } = await admin.from("users").select("email, display_name").eq("role", "owner");
+  if (!owners || owners.length === 0) return;
+
+  const title = projectTitle ? escapeHtml(projectTitle) : "(couldn't read the project title)";
+  for (const owner of owners) {
+    await sendEmail({
+      to: owner.email,
+      subject: "HoneyBook sync needs a hand",
+      html: `
+        <p>A session was scheduled in HoneyBook, but the board couldn't tell which lead it belongs to, so nothing was changed.</p>
+        <p><strong>HoneyBook project:</strong> ${title}</p>
+        <p><strong>Why:</strong> ${escapeHtml(reason)}</p>
+        <p>Open the lead and hit MEETING BOOKED by hand to move it along.</p>
+        <p><a href="${SITE_URL}/board">Open the board →</a></p>
+      `,
+    });
+  }
+}
+
 export async function notifyMusiciansOfNewLead(lead: Lead) {
   const admin = createAdminClient();
 

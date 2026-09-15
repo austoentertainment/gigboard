@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyOwnerOfSyncMiss } from "@/lib/notifications";
 
 // Fires from a Zapier automation watching Austin's Gmail (Sent folder, not
 // inbox — HoneyBook sends this confirmation from austin@djausto.com to the
@@ -37,7 +38,9 @@ export async function POST(request: Request) {
   // Collapse in case the title itself wraps across a line break.
   const projectTitle = titleMatch?.[1]?.trim().replace(/\s+/g, " ");
   if (!projectTitle) {
-    return NextResponse.json({ ok: false, reason: "couldn't find a project title in the email body" });
+    const reason = "couldn't find a project title in the email body";
+    await notifyOwnerOfSyncMiss(reason, null);
+    return NextResponse.json({ ok: false, reason });
   }
 
   const admin = createAdminClient();
@@ -54,12 +57,11 @@ export async function POST(request: Request) {
   });
 
   if (matches.length !== 1) {
-    return NextResponse.json({
-      ok: false,
-      reason: matches.length === 0 ? "no matching Pipeline lead found" : "multiple leads matched — ambiguous",
-      projectTitle,
-      candidateCount: matches.length,
-    });
+    const reason = matches.length === 0
+      ? "no lead in Pipeline matched that project title"
+      : `${matches.length} leads matched that project title, so it was too ambiguous to pick one`;
+    await notifyOwnerOfSyncMiss(reason, projectTitle);
+    return NextResponse.json({ ok: false, reason, projectTitle, candidateCount: matches.length });
   }
 
   const lead = matches[0];
