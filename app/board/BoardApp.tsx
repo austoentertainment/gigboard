@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService } from "@/lib/supabase/types";
@@ -2095,75 +2095,130 @@ function daysUntil(eventDate: string) {
 // it stops being news.
 const ACTIVITY_RECENT_DAYS = 7;
 
-type ActivityItem = { lead: LeadRow; meta: string; note?: string; key?: string };
-type ActivitySection = {
-  key: string; label: string; color: string; empty: string; tab: string; items: ActivityItem[];
+// One flat, chronological feed rather than grouped buckets — every entry
+// carries the timestamp of the moment it describes, which is what both
+// the sort and the unread comparison run on.
+type ActivityItem = {
+  key: string;
+  lead: LeadRow;
+  at: string;
+  note: string;
+  color: string;
+  tab: string;
 };
 
-// A read-only digest of everything already derivable from the leads this
-// role can see — no notifications table, nothing to mark read. Each row
-// is a shortcut: clicking it jumps to the tab that owns that lead and
-// scrolls its card into view.
-function ActivityFeed({
-  sections, onOpen,
+// Lives in the header as a button with an unread count, rather than
+// competing for space in the tab bar. Opening it is what clears the
+// count — there's no per-item read state to track.
+function ActivityMenu({
+  items, unread, seenAt, onOpen, onSeen,
 }: {
-  sections: ActivitySection[];
+  items: ActivityItem[];
+  unread: number;
+  seenAt: string | null;
   onOpen: (leadId: string, tab: string) => void;
+  onSeen: () => void;
 }) {
-  const total = sections.reduce((n, s) => n + s.items.length, 0);
-  if (total === 0) {
-    return <Empty text="Nothing yet — new date checks, meetings, and bookings all land here as they happen." />;
-  }
+  const [open, setOpen] = useState(false);
+  // Snapshotted when the panel opens, before onSeen() clears it, so this
+  // viewing can still show which rows were the unread ones.
+  const [markerAt, setMarkerAt] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open) { setMarkerAt(seenAt); onSeen(); }
+    setOpen(!open);
+  };
+
   return (
-    <>
-      {sections.map((section) => (
-        <div key={section.key} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Lamp color={section.color} pulse={section.key === "new" && section.items.length > 0} />
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", color: T.text }}>{section.label}</span>
-            {section.items.length > 0 && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: T.dim }}>{section.items.length}</span>
-            )}
-          </div>
-          {section.items.length === 0 ? (
-            <div style={{ fontSize: 12, color: T.dim, paddingLeft: 18 }}>{section.empty}</div>
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={toggle}
+        aria-label={unread > 0 ? `Activity, ${unread} unread` : "Activity"}
+        style={{
+          fontFamily: "inherit", fontWeight: 700, letterSpacing: "0.06em", fontSize: 12,
+          padding: "6px 12px", borderRadius: 6, cursor: "pointer",
+          background: open ? T.raised : "transparent",
+          color: unread > 0 ? T.text : T.dim,
+          border: `1px solid ${unread > 0 ? T.accent + "66" : T.line}`,
+          display: "flex", alignItems: "center", gap: 6,
+        }}
+      >
+        ACTIVITY
+        {unread > 0 && (
+          <span style={{
+            background: T.accent, color: T.bg, borderRadius: 9, minWidth: 17,
+            padding: "1px 5px", fontSize: 10.5, fontWeight: 900, lineHeight: 1.5, textAlign: "center",
+          }}>
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", right: 0, top: "calc(100% + 8px)",
+          width: 350, maxWidth: "92vw", maxHeight: 440, overflowY: "auto",
+          background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
+          boxShadow: "0 14px 36px rgba(0,0,0,.55)", zIndex: 40, padding: 6,
+        }}>
+          {items.length === 0 ? (
+            <div style={{ padding: "22px 16px", textAlign: "center", color: T.dim, fontSize: 12.5, lineHeight: 1.5 }}>
+              Nothing new. Date checks, meetings, bookings and payments all show up here.
+            </div>
           ) : (
-            section.items.map((item) => {
+            items.map((item) => {
               const d = fmtDate(item.lead.event_date);
               const names = [item.lead.client_name, item.lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead";
               const dateStr = item.lead.event_date
-                ? `${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`
+                ? `${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`
                 : "Date TBD";
+              const isNew = !markerAt || item.at > markerAt;
               return (
                 <div
-                  key={item.key ?? item.lead.id}
-                  onClick={() => onOpen(item.lead.id, section.tab)}
+                  key={item.key}
+                  onClick={() => { onOpen(item.lead.id, item.tab); setOpen(false); }}
                   style={{
-                    display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-                    background: T.surface, border: `1px solid ${T.line}`, borderLeft: `3px solid ${section.color}`,
-                    borderRadius: 8, padding: "10px 12px",
+                    display: "flex", gap: 9, alignItems: "flex-start", cursor: "pointer",
+                    padding: "9px 10px", borderRadius: 7,
+                    background: isNew ? T.raised : "transparent",
                   }}
                 >
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: item.color, marginTop: 5, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>
-                      {item.note && <span style={{ color: section.color }}>{item.note} · </span>}
-                      {names}
+                    <div style={{ fontSize: 12.5 }}>
+                      <span style={{ color: item.color, fontWeight: 800 }}>{item.note}</span>
+                      <span style={{ color: T.dim }}> · </span>
+                      <span style={{ fontWeight: 700 }}>{names}</span>
                     </div>
-                    <div style={{ fontSize: 11.5, color: T.dim, marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>
                       {dateStr}{item.lead.location ? ` · ${item.lead.location}` : ""}
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: section.color, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
-                    {item.meta}
-                  </div>
-                  <span style={{ color: T.dim, fontSize: 12, flexShrink: 0 }}>→</span>
+                  <span style={{ fontSize: 10.5, color: T.dim, whiteSpace: "nowrap", flexShrink: 0, marginTop: 1 }}>
+                    {timeAgo(item.at)}
+                  </span>
                 </div>
               );
             })
           )}
         </div>
-      ))}
-    </>
+      )}
+    </div>
   );
 }
 
@@ -2316,6 +2371,12 @@ export default function BoardApp({
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
   const [myResponseTimes, setMyResponseTimes] = useState<Record<string, string>>({});
   const [myEvents, setMyEvents] = useState<Pick<EventRow, "id" | "lead_id" | "event_type" | "detail" | "created_at">[]>([]);
+  // Read in an effect rather than a useState initializer so the first
+  // client render matches the server's (which has no localStorage), and
+  // keyed by user so a shared browser doesn't cross wires. Per-device by
+  // nature — checking on a phone won't clear the count on a laptop.
+  const [activitySeenAt, setActivitySeenAt] = useState<string | null>(null);
+  const activitySeenKey = `activitySeenAt:${userId}`;
   const [myTiers, setMyTiers] = useState<string[]>([]);
   const [myInstrument, setMyInstrument] = useState<Instrument | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
@@ -2466,6 +2527,20 @@ export default function BoardApp({
     if (!jumpHighlightId) return;
     document.getElementById(`lead-${jumpHighlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [jumpHighlightId, tab]);
+
+  useEffect(() => {
+    // Reading localStorage is exactly the "subscribe to an external
+    // system" case effects are for — it can't happen during render
+    // without desyncing from the server-rendered HTML.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    try { setActivitySeenAt(localStorage.getItem(activitySeenKey)); } catch { /* private mode / blocked storage */ }
+  }, [activitySeenKey]);
+
+  const markActivitySeen = useCallback(() => {
+    const now = new Date().toISOString();
+    setActivitySeenAt(now);
+    try { localStorage.setItem(activitySeenKey, now); } catch { /* count just won't persist */ }
+  }, [activitySeenKey]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -2877,6 +2952,8 @@ export default function BoardApp({
   const eventItems = (
     match: (e: (typeof myEvents)[number]) => boolean,
     label: (e: (typeof myEvents)[number]) => string,
+    color: string,
+    tab: string,
     dedupe = false,
   ): ActivityItem[] => {
     const seen = new Set<string>();
@@ -2891,7 +2968,7 @@ export default function BoardApp({
       })
       .map((e): ActivityItem | null => {
         const lead = leads.find((l) => l.id === e.lead_id);
-        return lead ? { lead, meta: timeAgo(e.created_at), note: label(e), key: e.id } : null;
+        return lead ? { key: e.id, lead, at: e.created_at, note: label(e), color, tab } : null;
       })
       .filter((i): i is ActivityItem => i !== null);
   };
@@ -2905,61 +2982,47 @@ export default function BoardApp({
   // there's no events row for it — musician_meeting_date is the stamp.
   const musicianMeetingIsRecent = (l: LeadRow) =>
     !!l.musician_meeting_date && daysUntil(l.musician_meeting_date) >= -ACTIVITY_RECENT_DAYS;
+  const newest = (a: ActivityItem, b: ActivityItem) => (a.at < b.at ? 1 : -1);
 
-  const djActivitySections: ActivitySection[] = [
-    {
-      key: "new", label: "NEW LEADS IN YOUR TIERS", color: T.accent, tab: "checks",
-      empty: "No new date checks waiting on you.",
-      items: [...needsMe].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
-    },
-    {
-      key: "meetings", label: "MEETINGS BOOKED", color: T.violet, tab: "pending",
-      empty: "No meetings booked this week.",
-      items: eventItems(isMeetingEvent, () => "Meeting booked", true),
-    },
-    {
-      key: "booked", label: "EVENTS BOOKED", color: T.green, tab: "upcoming",
-      empty: "Nothing booked this week.",
-      items: eventItems(isBookedEvent, () => "Booked", true),
-    },
-    {
-      key: "payments", label: "PAYMENTS MADE", color: T.yellow, tab: "upcoming",
-      empty: "No payments this week.",
-      items: eventItems(isPaymentEvent, paymentLabel),
-    },
-  ];
-  const musicianActivitySections: ActivitySection[] = [
-    {
-      key: "new", label: myInstrument ? `NEW LEADS FOR ${myInstrument.toUpperCase()}` : "NEW LEADS", color: T.accent, tab: "musician-checks",
-      empty: "No new date checks waiting on you.",
-      items: [...needsMeMusician].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
-    },
-    {
-      key: "meetings", label: "MEETINGS BOOKED", color: T.violet, tab: "musician-pending",
-      empty: "No meetings booked this week.",
-      items: myMusicianPendingBooking.filter(musicianMeetingIsRecent).map((l) => {
-        const until = holdUntilText(l);
-        return { lead: l, meta: until ? `hold til ${until}` : "on hold", note: "Meeting booked" };
-      }),
-    },
-    {
-      // Narrower than the DJ version: RLS lets a musician see the booked
-      // event for any lead they answered, but a lead that booked with a
-      // different musician isn't their news — only gigs they're on.
-      key: "booked", label: "EVENTS BOOKED", color: T.green, tab: "musician-upcoming",
-      empty: "Nothing booked this week.",
-      items: eventItems((e) => isBookedEvent(e) && myMusicianLeadIds.has(e.lead_id ?? ""), () => "Booked", true),
-    },
-    {
-      key: "payments", label: "PAYMENTS MADE", color: T.yellow, tab: "musician-upcoming",
-      empty: "No payments this week.",
-      items: eventItems(isPaymentEvent, paymentLabel),
-    },
-  ];
+  // New leads stay unwindowed — an unanswered date check is still waiting
+  // on you however old it is, so it keeps its place in the feed by age
+  // rather than dropping off after a week like the rest.
+  const djActivityItems: ActivityItem[] = [
+    ...needsMe.map((l) => ({
+      key: `new-${l.id}`, lead: l, at: l.created_at, note: "New lead", color: T.accent, tab: "checks",
+    })),
+    ...eventItems(isMeetingEvent, () => "Meeting booked", T.violet, "pending", true),
+    ...eventItems(isBookedEvent, () => "Booked", T.green, "upcoming", true),
+    ...eventItems(isPaymentEvent, paymentLabel, T.yellow, "upcoming"),
+  ].sort(newest);
+
+  const musicianActivityItems: ActivityItem[] = [
+    ...needsMeMusician.map((l) => ({
+      key: `new-${l.id}`, lead: l, at: l.created_at, note: "New lead", color: T.accent, tab: "musician-checks",
+    })),
+    ...myMusicianPendingBooking.flatMap((l): ActivityItem[] => {
+      if (!musicianMeetingIsRecent(l) || !l.musician_meeting_date) return [];
+      return [{
+        key: `meet-${l.id}`, lead: l,
+        at: new Date(l.musician_meeting_date + "T12:00:00").toISOString(),
+        note: "Meeting booked", color: T.violet, tab: "musician-pending",
+      }];
+    }),
+    // Narrower than the DJ version: RLS lets a musician see the booked
+    // event for any lead they answered, but a lead that booked with a
+    // different musician isn't their news — only gigs they're on.
+    ...eventItems(
+      (e) => isBookedEvent(e) && myMusicianLeadIds.has(e.lead_id ?? ""),
+      () => "Booked", T.green, "musician-upcoming", true,
+    ),
+    ...eventItems(isPaymentEvent, paymentLabel, T.yellow, "musician-upcoming"),
+  ].sort(newest);
+
+  const activityItems = role === "dj" ? djActivityItems : role === "musician" ? musicianActivityItems : [];
+  const unreadActivity = activityItems.filter((i) => !activitySeenAt || i.at > activitySeenAt).length;
 
   const djTabs = [
     { id: "home", label: "HOME", count: 0 },
-    { id: "activity", label: "ACTIVITY", count: 0 },
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
     { id: "pending", label: "PENDING", count: myPending.length },
     { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
@@ -2969,7 +3032,6 @@ export default function BoardApp({
   ];
   const musicianTabs = [
     { id: "musician-home", label: "HOME", count: 0 },
-    { id: "musician-activity", label: "ACTIVITY", count: 0 },
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
     { id: "musician-pending", label: "PENDING", count: myMusicianPendingBooking.length },
     { id: "musician-upcoming", label: "UPCOMING", count: myMusicianPlanning.length },
@@ -3013,6 +3075,15 @@ export default function BoardApp({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: T.dim }}>{displayName} · {role === "owner" ? "Owner" : role === "dj" ? "DJ" : "Musician"}</span>
+              {role !== "owner" && (
+                <ActivityMenu
+                  items={activityItems}
+                  unread={unreadActivity}
+                  seenAt={activitySeenAt}
+                  onSeen={markActivitySeen}
+                  onOpen={goToLead}
+                />
+              )}
               <Btn small ariaLabel="Refresh board" onClick={() => { loadData(); ping("Board refreshed"); }}>↻</Btn>
               <Btn small onClick={logout}>LOG OUT</Btn>
             </div>
@@ -3230,10 +3301,6 @@ export default function BoardApp({
           </>
         )}
 
-        {role === "dj" && activeTab === "activity" && (
-          <ActivityFeed sections={djActivitySections} onOpen={goToLead} />
-        )}
-
         {role === "dj" && activeTab === "checks" && (
           <>
             {roster.length === 0 && checking.length === 0 && <Empty text="No open date checks yet." />}
@@ -3375,10 +3442,6 @@ export default function BoardApp({
               onSelectEvent={(id, done) => goToLead(id, done ? "musician-completed" : "musician-upcoming")}
             />
           </>
-        )}
-
-        {role === "musician" && activeTab === "musician-activity" && (
-          <ActivityFeed sections={musicianActivitySections} onOpen={goToLead} />
         )}
 
         {role === "musician" && activeTab === "musician-checks" && (
