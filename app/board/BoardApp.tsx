@@ -2090,14 +2090,10 @@ function daysUntil(eventDate: string) {
   return Math.round((new Date(eventDate + "T12:00:00").getTime() - today) / 86400000);
 }
 
-function countdownLabel(eventDate: string | null) {
-  if (!eventDate) return "date TBD";
-  const days = daysUntil(eventDate);
-  if (days < 0) return "past";
-  if (days === 0) return "today";
-  if (days === 1) return "tomorrow";
-  return `in ${days} days`;
-}
+// Activity is a recent-activity feed, not a standing to-do list — every
+// section but New Leads is capped to this window so nothing lingers after
+// it stops being news.
+const ACTIVITY_RECENT_DAYS = 7;
 
 type ActivityItem = { lead: LeadRow; meta: string; note?: string; key?: string };
 type ActivitySection = {
@@ -2432,11 +2428,14 @@ export default function BoardApp({
     }
     if (role !== "owner") {
       // RLS (events_talent_select) already narrows this to your own
-      // payments plus "booked" transitions on leads you can see, so
-      // there's nothing to filter by user here.
+      // payments plus meeting/booked transitions on leads you can see, so
+      // there's nothing to filter by user here. The window is applied in
+      // the query rather than client-side — Activity only ever shows the
+      // last week, so there's no reason to pull more than that.
       const { data: eventsData } = await supabase
         .from("events")
         .select("id, lead_id, event_type, detail, created_at")
+        .gte("created_at", new Date(Date.now() - ACTIVITY_RECENT_DAYS * 86400000).toISOString())
         .order("created_at", { ascending: false })
         .limit(100);
       setMyEvents(eventsData ?? []);
@@ -2869,30 +2868,43 @@ export default function BoardApp({
     { id: "roster", label: "ROSTER", count: roster.length },
     { id: "settings", label: "SETTINGS", count: 0 },
   ];
-  // Bookings split by how soon they land rather than being listed twice —
-  // every confirmed gig shows up in exactly one of the two sections.
-  const ACTIVITY_SOON_DAYS = 30;
-  const soon = (l: LeadRow) => !!l.event_date && daysUntil(l.event_date) <= ACTIVITY_SOON_DAYS;
-  // "Booked" and "paid" are moments, not states — they come off the audit
-  // log so they carry the timestamp of when the owner actually did it,
-  // rather than being inferred from the lead's current shape. RLS already
-  // scoped these rows to this user; the lead lookup drops any whose lead
-  // isn't in view.
+  // "Meeting booked", "booked" and "paid" are moments, not states — they
+  // come off the audit log so each carries the timestamp of when the owner
+  // actually did it, rather than being inferred from the lead's current
+  // shape. myEvents is already windowed to the last week by the query and
+  // sorted newest-first, so `dedupe` keeping the first hit per lead keeps
+  // the most recent update and drops re-marks of the same lead.
   const eventItems = (
     match: (e: (typeof myEvents)[number]) => boolean,
     label: (e: (typeof myEvents)[number]) => string,
-  ): ActivityItem[] =>
-    myEvents
-      .filter(match)
+    dedupe = false,
+  ): ActivityItem[] => {
+    const seen = new Set<string>();
+    return myEvents
+      .filter((e) => {
+        if (!match(e)) return false;
+        if (!dedupe) return true;
+        const id = e.lead_id ?? "";
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
       .map((e): ActivityItem | null => {
         const lead = leads.find((l) => l.id === e.lead_id);
         return lead ? { lead, meta: timeAgo(e.created_at), note: label(e), key: e.id } : null;
       })
       .filter((i): i is ActivityItem => i !== null);
-  const isBookedEvent = (e: (typeof myEvents)[number]) => e.event_type === "status_change";
+  };
+  const statusTo = (e: (typeof myEvents)[number]) => (e.detail as { to?: string } | null)?.to;
+  const isBookedEvent = (e: (typeof myEvents)[number]) => e.event_type === "status_change" && statusTo(e) === "booked";
+  const isMeetingEvent = (e: (typeof myEvents)[number]) => e.event_type === "status_change" && statusTo(e) === "meeting";
   const isPaymentEvent = (e: (typeof myEvents)[number]) => e.event_type === "payment";
   const paymentLabel = (e: (typeof myEvents)[number]) =>
     (e.detail as { kind?: string } | null)?.kind === "final" ? "Paid in full" : "Deposit paid";
+  // The musician side of "meeting booked" isn't a lead status change, so
+  // there's no events row for it — musician_meeting_date is the stamp.
+  const musicianMeetingIsRecent = (l: LeadRow) =>
+    !!l.musician_meeting_date && daysUntil(l.musician_meeting_date) >= -ACTIVITY_RECENT_DAYS;
 
   const djActivitySections: ActivitySection[] = [
     {
@@ -2901,27 +2913,19 @@ export default function BoardApp({
       items: [...needsMe].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
     },
     {
-      key: "meetings", label: "MEETINGS BOOKED WITH AUSTO", color: T.violet, tab: "pending",
-      empty: "Nothing in the works right now.",
-      items: [
-        ...myAssignedMeeting.map((l) => ({ lead: l, meta: "you're assigned" })),
-        ...myAwaitingSelection.map((l) => ({ lead: l, meta: "DJ not picked yet" })),
-      ],
+      key: "meetings", label: "MEETINGS BOOKED", color: T.violet, tab: "pending",
+      empty: "No meetings booked this week.",
+      items: eventItems(isMeetingEvent, () => "Meeting booked", true),
     },
     {
       key: "booked", label: "EVENTS BOOKED", color: T.green, tab: "upcoming",
-      empty: "Nothing newly booked.",
-      items: eventItems(isBookedEvent, () => "Booked"),
+      empty: "Nothing booked this week.",
+      items: eventItems(isBookedEvent, () => "Booked", true),
     },
     {
       key: "payments", label: "PAYMENTS MADE", color: T.yellow, tab: "upcoming",
-      empty: "No payments yet.",
+      empty: "No payments this week.",
       items: eventItems(isPaymentEvent, paymentLabel),
-    },
-    {
-      key: "soon", label: "UPCOMING THIS MONTH", color: T.blue, tab: "upcoming",
-      empty: "Nothing on your calendar in the next 30 days.",
-      items: myUpcoming.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
     },
   ];
   const musicianActivitySections: ActivitySection[] = [
@@ -2931,11 +2935,11 @@ export default function BoardApp({
       items: [...needsMeMusician].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
     },
     {
-      key: "meetings", label: "MEETINGS BOOKED WITH AUSTO", color: T.violet, tab: "musician-pending",
-      empty: "Nothing on hold right now.",
-      items: myMusicianPendingBooking.map((l) => {
+      key: "meetings", label: "MEETINGS BOOKED", color: T.violet, tab: "musician-pending",
+      empty: "No meetings booked this week.",
+      items: myMusicianPendingBooking.filter(musicianMeetingIsRecent).map((l) => {
         const until = holdUntilText(l);
-        return { lead: l, meta: until ? `hold til ${until}` : "on hold" };
+        return { lead: l, meta: until ? `hold til ${until}` : "on hold", note: "Meeting booked" };
       }),
     },
     {
@@ -2943,18 +2947,13 @@ export default function BoardApp({
       // event for any lead they answered, but a lead that booked with a
       // different musician isn't their news — only gigs they're on.
       key: "booked", label: "EVENTS BOOKED", color: T.green, tab: "musician-upcoming",
-      empty: "Nothing newly booked.",
-      items: eventItems((e) => isBookedEvent(e) && myMusicianLeadIds.has(e.lead_id ?? ""), () => "Booked"),
+      empty: "Nothing booked this week.",
+      items: eventItems((e) => isBookedEvent(e) && myMusicianLeadIds.has(e.lead_id ?? ""), () => "Booked", true),
     },
     {
       key: "payments", label: "PAYMENTS MADE", color: T.yellow, tab: "musician-upcoming",
-      empty: "No payments yet.",
+      empty: "No payments this week.",
       items: eventItems(isPaymentEvent, paymentLabel),
-    },
-    {
-      key: "soon", label: "UPCOMING THIS MONTH", color: T.blue, tab: "musician-upcoming",
-      empty: "Nothing on your calendar in the next 30 days.",
-      items: myMusicianPlanning.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
     },
   ];
 

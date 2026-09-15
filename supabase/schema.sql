@@ -445,7 +445,7 @@ create policy "events_talent_select" on public.events
     (event_type = 'payment' and detail->>'payee_id' = auth.uid()::text)
     or (
       event_type = 'status_change'
-      and detail->>'to' = 'booked'
+      and detail->>'to' in ('meeting', 'booked')
       and lead_id in (select id from public.leads_feed)
     )
   );
