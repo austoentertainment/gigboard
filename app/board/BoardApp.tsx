@@ -1809,10 +1809,7 @@ function MusicianLeadCard({
   // The hold deadline matters more to a musician than most other details
   // on the card — surfaced big and prominent under the tags, not buried
   // in small dim text lower down.
-  const holdUntilLabel = lead.musician_stage === "pending_booking" && lead.musician_meeting_date
-    ? new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + 14 * 24 * 60 * 60 * 1000)
-      .toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : null;
+  const holdUntilLabel = lead.musician_stage === "pending_booking" ? holdUntilText(lead) : null;
   const [expanded, setExpanded] = useState(!!highlighted);
   return (
     <div
@@ -2066,6 +2063,111 @@ function NextEventCard({
   );
 }
 
+// Matches HOLD_DAYS in lib/notifications.ts — the hold emails and the
+// board's own "until {date}" label have to name the same day.
+const MUSICIAN_HOLD_DAYS = 14;
+function holdUntilText(lead: LeadRow) {
+  if (!lead.musician_meeting_date) return null;
+  return new Date(new Date(lead.musician_meeting_date + "T12:00:00").getTime() + MUSICIAN_HOLD_DAYS * 86400000)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function timeAgo(iso: string) {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.round(days / 30)}mo ago`;
+}
+
+// Noon avoids the date-only string parsing as UTC midnight and landing on
+// the previous day in Pacific — the same guard fmtDate uses.
+function daysUntil(eventDate: string) {
+  const today = new Date(new Date().toISOString().slice(0, 10) + "T12:00:00").getTime();
+  return Math.round((new Date(eventDate + "T12:00:00").getTime() - today) / 86400000);
+}
+
+function countdownLabel(eventDate: string | null) {
+  if (!eventDate) return "date TBD";
+  const days = daysUntil(eventDate);
+  if (days < 0) return "past";
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  return `in ${days} days`;
+}
+
+type ActivityItem = { lead: LeadRow; meta: string };
+type ActivitySection = {
+  key: string; label: string; color: string; empty: string; tab: string; items: ActivityItem[];
+};
+
+// A read-only digest of everything already derivable from the leads this
+// role can see — no notifications table, nothing to mark read. Each row
+// is a shortcut: clicking it jumps to the tab that owns that lead and
+// scrolls its card into view.
+function ActivityFeed({
+  sections, onOpen,
+}: {
+  sections: ActivitySection[];
+  onOpen: (leadId: string, tab: string) => void;
+}) {
+  const total = sections.reduce((n, s) => n + s.items.length, 0);
+  if (total === 0) {
+    return <Empty text="Nothing yet — new date checks, meetings, and bookings all land here as they happen." />;
+  }
+  return (
+    <>
+      {sections.map((section) => (
+        <div key={section.key} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Lamp color={section.color} pulse={section.key === "new" && section.items.length > 0} />
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", color: T.text }}>{section.label}</span>
+            {section.items.length > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: T.dim }}>{section.items.length}</span>
+            )}
+          </div>
+          {section.items.length === 0 ? (
+            <div style={{ fontSize: 12, color: T.dim, paddingLeft: 18 }}>{section.empty}</div>
+          ) : (
+            section.items.map((item) => {
+              const d = fmtDate(item.lead.event_date);
+              const names = [item.lead.client_name, item.lead.fiance_name].filter(Boolean).join(" + ") || "Unnamed lead";
+              const dateStr = item.lead.event_date
+                ? `${d.dow ? `${d.dow}, ` : ""}${d.mon} ${d.day}${d.year ? `, ${d.year}` : ""}`
+                : "Date TBD";
+              return (
+                <div
+                  key={item.lead.id}
+                  onClick={() => onOpen(item.lead.id, section.tab)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+                    background: T.surface, border: `1px solid ${T.line}`, borderLeft: `3px solid ${section.color}`,
+                    borderRadius: 8, padding: "10px 12px",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{names}</div>
+                    <div style={{ fontSize: 11.5, color: T.dim, marginTop: 2 }}>
+                      {dateStr}{item.lead.location ? ` · ${item.lead.location}` : ""}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: section.color, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {item.meta}
+                  </div>
+                  <span style={{ color: T.dim, fontSize: 12, flexShrink: 0 }}>→</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 const calNavBtnStyle: React.CSSProperties = {
   background: "transparent", border: `1px solid ${T.line}`, borderRadius: 6, color: T.dim,
   width: 26, height: 26, fontSize: 15, fontFamily: "inherit", cursor: "pointer", lineHeight: 1,
@@ -2219,7 +2321,7 @@ export default function BoardApp({
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [tab, setTab] = useState("pipeline");
-  const [calHighlightId, setCalHighlightId] = useState<string | null>(null);
+  const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const [showAdd, setShowAdd] = useState<"import" | "manual" | false>(false);
@@ -2344,12 +2446,12 @@ export default function BoardApp({
 
   // Calendar-driven jumps switch tabs first, so the target card doesn't
   // exist in the DOM until the destination tab's own render commits —
-  // re-run on `tab` too, not just calHighlightId, so the scroll fires
+  // re-run on `tab` too, not just jumpHighlightId, so the scroll fires
   // post-switch.
   useEffect(() => {
-    if (!calHighlightId) return;
-    document.getElementById(`lead-${calHighlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [calHighlightId, tab]);
+    if (!jumpHighlightId) return;
+    document.getElementById(`lead-${jumpHighlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [jumpHighlightId, tab]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -2752,8 +2854,64 @@ export default function BoardApp({
     { id: "roster", label: "ROSTER", count: roster.length },
     { id: "settings", label: "SETTINGS", count: 0 },
   ];
+  // Bookings split by how soon they land rather than being listed twice —
+  // every confirmed gig shows up in exactly one of the two sections.
+  const ACTIVITY_SOON_DAYS = 30;
+  const soon = (l: LeadRow) => !!l.event_date && daysUntil(l.event_date) <= ACTIVITY_SOON_DAYS;
+  const djActivitySections: ActivitySection[] = [
+    {
+      key: "new", label: "NEW LEADS IN YOUR TIERS", color: T.accent, tab: "checks",
+      empty: "No new date checks waiting on you.",
+      items: [...needsMe].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
+    },
+    {
+      key: "meetings", label: "MEETINGS BOOKED WITH AUSTO", color: T.violet, tab: "pending",
+      empty: "Nothing in the works right now.",
+      items: [
+        ...myAssignedMeeting.map((l) => ({ lead: l, meta: "you're assigned" })),
+        ...myAwaitingSelection.map((l) => ({ lead: l, meta: "DJ not picked yet" })),
+      ],
+    },
+    {
+      key: "soon", label: "HAPPENING THIS MONTH", color: T.green, tab: "upcoming",
+      empty: "Nothing on your calendar in the next 30 days.",
+      items: myUpcoming.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+    },
+    {
+      key: "booked", label: "EVENTS BOOKED", color: T.blue, tab: "upcoming",
+      empty: "No bookings further out yet.",
+      items: myUpcoming.filter((l) => !soon(l)).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+    },
+  ];
+  const musicianActivitySections: ActivitySection[] = [
+    {
+      key: "new", label: myInstrument ? `NEW LEADS FOR ${myInstrument.toUpperCase()}` : "NEW LEADS", color: T.accent, tab: "musician-checks",
+      empty: "No new date checks waiting on you.",
+      items: [...needsMeMusician].sort((a, b) => bySubmitted(b, a)).map((l) => ({ lead: l, meta: timeAgo(l.created_at) })),
+    },
+    {
+      key: "meetings", label: "MEETINGS BOOKED WITH AUSTO", color: T.yellow, tab: "musician-pending",
+      empty: "Nothing on hold right now.",
+      items: myMusicianPendingBooking.map((l) => {
+        const until = holdUntilText(l);
+        return { lead: l, meta: until ? `hold til ${until}` : "on hold" };
+      }),
+    },
+    {
+      key: "soon", label: "HAPPENING THIS MONTH", color: T.green, tab: "musician-upcoming",
+      empty: "Nothing on your calendar in the next 30 days.",
+      items: myMusicianPlanning.filter(soon).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+    },
+    {
+      key: "booked", label: "EVENTS BOOKED", color: T.blue, tab: "musician-upcoming",
+      empty: "No bookings further out yet.",
+      items: myMusicianPlanning.filter((l) => !soon(l)).sort(byDate).map((l) => ({ lead: l, meta: countdownLabel(l.event_date) })),
+    },
+  ];
+
   const djTabs = [
     { id: "home", label: "HOME", count: 0 },
+    { id: "activity", label: "ACTIVITY", count: 0 },
     { id: "checks", label: "DATE CHECKS", count: needsMe.length },
     { id: "pending", label: "PENDING", count: myPending.length },
     { id: "upcoming", label: "UPCOMING", count: myUpcoming.filter((l) => leadStatus(l) === "booked").length },
@@ -2763,6 +2921,7 @@ export default function BoardApp({
   ];
   const musicianTabs = [
     { id: "musician-home", label: "HOME", count: 0 },
+    { id: "musician-activity", label: "ACTIVITY", count: 0 },
     { id: "musician-checks", label: "DATE CHECKS", count: needsMeMusician.length },
     { id: "musician-pending", label: "PENDING", count: myMusicianPendingBooking.length },
     { id: "musician-upcoming", label: "UPCOMING", count: myMusicianPlanning.length },
@@ -2772,8 +2931,8 @@ export default function BoardApp({
   const tabs = role === "owner" ? ownerTabs : role === "dj" ? djTabs : musicianTabs;
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
 
-  const goToCalendarEvent = (leadId: string, targetTab: string) => {
-    setCalHighlightId(leadId);
+  const goToLead = (leadId: string, targetTab: string) => {
+    setJumpHighlightId(leadId);
     setTab(targetTab);
   };
 
@@ -2872,12 +3031,12 @@ export default function BoardApp({
                     myAnswer={myAvailability[l.id]}
                     onSetAvail={setAvail}
                     busy={busyLeadId === l.id}
-                    highlighted={l.id === highlightLeadId}
+                    highlighted={l.id === highlightLeadId || l.id === jumpHighlightId}
                   />
                 ) : (
                   <LeadCard
                     lead={l} djView={role === "dj"} roster={role === "owner" ? assignableRoster : roster} availability={availability}
-                    myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId}
+                    myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId}
                     onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians}
                     onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail}
                     onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes}
@@ -2904,7 +3063,7 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: TIER_COLORS.Headliner }}>HEADLINER LEADS — YOUR CALL</div>
             )}
             {sortSection(headlinerAwaitingMe, pipelineSort).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.length > 0 && <SortToggle sortBy={pipelineSort.by} sortDir={pipelineSort.dir} onChange={toggleSectionSort(setPipelineSort)} />}
             {checking.length === 0 && !showAdd && (
@@ -2914,13 +3073,13 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
             {sortSection(checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l)), pipelineSort).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking" && !isAwaitingMyHeadlinerCall(l)).length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {sortSection(checking.filter((l) => leadStatus(l) === "checking"), pipelineSort).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -2936,7 +3095,7 @@ export default function BoardApp({
                 <SectionLabel>MEETING BOOKED</SectionLabel>
                 <SortToggle sortBy={ownerMeetingBookedSort.by} sortDir={ownerMeetingBookedSort.dir} onChange={toggleSectionSort(setOwnerMeetingBookedSort)} />
                 {sortSection(filteredMeetings, ownerMeetingBookedSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -2945,7 +3104,7 @@ export default function BoardApp({
                 <SectionLabel>FOLLOW UP</SectionLabel>
                 <SortToggle sortBy={ownerFollowUpSort.by} sortDir={ownerFollowUpSort.dir} onChange={toggleSectionSort(setOwnerFollowUpSort)} />
                 {sortSection(filteredPending, ownerFollowUpSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -2960,7 +3119,7 @@ export default function BoardApp({
               <Empty text={motionDjFilter === "all" ? "No upcoming booked gigs yet." : "No upcoming booked gigs for this DJ yet."} />
             )}
             {sortLeads(filteredUpcoming).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -2973,7 +3132,7 @@ export default function BoardApp({
               <Empty text={motionDjFilter === "all" ? "Nothing here — booked gigs whose date has passed show up until marked completed." : "No past booked gigs for this DJ yet."} />
             )}
             {sortLeads(filteredPast).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -2982,7 +3141,7 @@ export default function BoardApp({
           <>
             {archived.length === 0 && <Empty text="Completed and lost leads end up here." />}
             {archived.map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3018,9 +3177,13 @@ export default function BoardApp({
                 ...myUpcoming.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: false })),
                 ...myCompleted.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: true })),
               ]}
-              onSelectEvent={(id, done) => goToCalendarEvent(id, done ? "completed" : "upcoming")}
+              onSelectEvent={(id, done) => goToLead(id, done ? "completed" : "upcoming")}
             />
           </>
+        )}
+
+        {role === "dj" && activeTab === "activity" && (
+          <ActivityFeed sections={djActivitySections} onOpen={goToLead} />
         )}
 
         {role === "dj" && activeTab === "checks" && (
@@ -3040,7 +3203,7 @@ export default function BoardApp({
                 <SectionLabel large>NEED AVAILABILITY</SectionLabel>
                 <SortToggle sortBy={needAvailSort.by} sortDir={needAvailSort.dir} onChange={toggleSectionSort(setNeedAvailSort)} />
                 {sortSection(needsMe, needAvailSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             ) : myChecks.length > 0 && <Empty text="All caught up!" />}
@@ -3049,7 +3212,7 @@ export default function BoardApp({
                 <SectionLabel large>MARKED AVAILABLE</SectionLabel>
                 <SortToggle sortBy={markedAvailSort.by} sortDir={markedAvailSort.dir} onChange={toggleSectionSort(setMarkedAvailSort)} />
                 {sortSection(myMarkedAvailable, markedAvailSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3066,7 +3229,7 @@ export default function BoardApp({
                 <SectionLabel large>PENDING BOOKING</SectionLabel>
                 <SortToggle sortBy={pendingBookingSort.by} sortDir={pendingBookingSort.dir} onChange={toggleSectionSort(setPendingBookingSort)} />
                 {sortSection(myAssignedMeeting, pendingBookingSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3075,7 +3238,7 @@ export default function BoardApp({
                 <SectionLabel large>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
                 <SortToggle sortBy={awaitingSelectionSort.by} sortDir={awaitingSelectionSort.dir} onChange={toggleSectionSort(setAwaitingSelectionSort)} />
                 {sortSection(myAwaitingSelection, awaitingSelectionSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3089,7 +3252,7 @@ export default function BoardApp({
             )}
             {myArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myArchive).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3098,7 +3261,7 @@ export default function BoardApp({
           <>
             {myUpcoming.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myUpcoming.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === calHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3107,7 +3270,7 @@ export default function BoardApp({
           <>
             {myCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed and you've been paid in full." />}
             {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === calHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3161,9 +3324,13 @@ export default function BoardApp({
                 ...myMusicianPlanning.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: false })),
                 ...myMusicianComplete.filter((l) => l.event_date).map((l) => ({ id: l.id, date: l.event_date as string, done: true })),
               ]}
-              onSelectEvent={(id, done) => goToCalendarEvent(id, done ? "musician-completed" : "musician-upcoming")}
+              onSelectEvent={(id, done) => goToLead(id, done ? "musician-completed" : "musician-upcoming")}
             />
           </>
+        )}
+
+        {role === "musician" && activeTab === "musician-activity" && (
+          <ActivityFeed sections={musicianActivitySections} onOpen={goToLead} />
         )}
 
         {role === "musician" && activeTab === "musician-checks" && (
@@ -3178,7 +3345,7 @@ export default function BoardApp({
                 <SectionLabel large>NEED AVAILABILITY</SectionLabel>
                 <SortToggle sortBy={needAvailMusicianSort.by} sortDir={needAvailMusicianSort.dir} onChange={toggleSectionSort(setNeedAvailMusicianSort)} />
                 {sortSection(needsMeMusician, needAvailMusicianSort).map((l) => (
-                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} />
                 ))}
               </>
             ) : myMusicianChecks.length > 0 && <Empty text="All caught up!" />}
@@ -3187,7 +3354,7 @@ export default function BoardApp({
                 <SectionLabel large>MARKED AVAILABLE</SectionLabel>
                 <SortToggle sortBy={markedAvailMusicianSort.by} sortDir={markedAvailMusicianSort.dir} onChange={toggleSectionSort(setMarkedAvailMusicianSort)} />
                 {sortSection(myMusicianMarkedAvailable, markedAvailMusicianSort).map((l) => (
-                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+                  <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} />
                 ))}
               </>
             )}
@@ -3201,7 +3368,7 @@ export default function BoardApp({
             )}
             {myMusicianPendingBooking.length > 0 && <SortToggle sortBy={pendingBookingMusicianSort.by} sortDir={pendingBookingMusicianSort.dir} onChange={toggleSectionSort(setPendingBookingMusicianSort)} />}
             {sortSection(myMusicianPendingBooking, pendingBookingMusicianSort).map((l) => (
-              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} />
             ))}
           </>
         )}
@@ -3213,7 +3380,7 @@ export default function BoardApp({
             )}
             {myMusicianArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myMusicianArchive).map((l) => (
-              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId} />
+              <MusicianLeadCard key={l.id} lead={l} myAnswer={myAvailability[l.id]} onSetAvail={setAvail} onRetractAvail={retractAvail} busy={busyLeadId === l.id} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} />
             ))}
           </>
         )}
@@ -3223,7 +3390,7 @@ export default function BoardApp({
             {myMusicianPlanning.length === 0 && <Empty text="No gigs booked yet — Austin will add you to a lead once a client books live music." />}
             {myMusicianPlanning.sort(byDate).map((l) => {
               const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
-              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId || l.id === calHighlightId} /> : null;
+              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} /> : null;
             })}
           </>
         )}
@@ -3233,7 +3400,7 @@ export default function BoardApp({
             {myMusicianComplete.length === 0 && <Empty text="Completed gigs show up here once the event has passed." />}
             {myMusicianComplete.sort((a, b) => byDate(b, a)).map((l) => {
               const booking = myMusicianBookings.find((b) => b.lead_id === l.id);
-              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId || l.id === calHighlightId} /> : null;
+              return booking ? <MusicianLeadCard key={l.id} lead={l} booking={booking} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} /> : null;
             })}
           </>
         )}
