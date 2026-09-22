@@ -10,7 +10,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoenterta
 const HOLD_DAYS = 14;
 // How long a lead can sit without a meeting booked before it's treated as
 // dead and dropped off both DJs' and musicians' Date Checks.
-const STALE_LEAD_DAYS = 60;
+const STALE_LEAD_DAYS = 30;
 
 // Runs once daily (see vercel.json — 16:00 UTC, which is 9am Pacific during
 // daylight saving; Vercel Cron has no timezone awareness, so this drifts to
