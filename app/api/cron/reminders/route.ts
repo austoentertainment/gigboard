@@ -8,6 +8,9 @@ import type { DjTier, Instrument } from "@/lib/supabase/types";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://board.austoentertainment.com";
 const HOLD_DAYS = 14;
+// How long a lead can sit without a meeting booked before it's treated as
+// dead and dropped off both DJs' and musicians' Date Checks.
+const STALE_LEAD_DAYS = 60;
 
 // Runs once daily (see vercel.json — 16:00 UTC, which is 9am Pacific during
 // daylight saving; Vercel Cron has no timezone awareness, so this drifts to
@@ -29,11 +32,19 @@ export async function GET(request: Request) {
   await admin.from("leads").update({ status: "played" }).eq("status", "booked").lt("event_date", today);
   await admin.from("leads").update({ status: "lost" }).in("status", ["checking", "meeting"]).lt("event_date", today);
 
-  // Auto-archive stale Pipeline leads: still unable to get a first meeting
-  // booked 30 days after the lead came in reads as a dead lead, independent
-  // of how far off the event date itself is.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  await admin.from("leads").update({ status: "lost" }).eq("status", "checking").lt("created_at", thirtyDaysAgo);
+  // Auto-archive stale leads: still unable to get a first meeting booked
+  // this long after the lead came in reads as a dead lead, independent of
+  // how far off the event date itself is. Anchored on created_at rather
+  // than last touch on purpose — a DJ marking available doesn't move a
+  // lead any closer to booking, so it shouldn't reset the clock.
+  const staleCutoff = new Date(Date.now() - STALE_LEAD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await admin.from("leads").update({ status: "lost" }).eq("status", "checking").lt("created_at", staleCutoff);
+  // The musician pipeline runs independently of the DJ status, and
+  // leads_feed shows musicians every lead at musician_stage 'new'
+  // regardless of whether the DJ side went lost — so without this, a dead
+  // lead sat in their Date Checks forever with nothing to clear it.
+  // 'pending_booking' is excluded because that means a meeting did happen.
+  await admin.from("leads").update({ musician_stage: "archived" }).eq("musician_stage", "new").lt("created_at", staleCutoff);
 
   // Musician stage auto-advance: booking a musician already flips the
   // stage to 'planning' via a DB trigger (trg_advance_musician_stage), so
