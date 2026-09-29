@@ -1109,7 +1109,21 @@ function LeadCard({
             </Btn>
           )}
           {!djView && !["lost", "played"].includes(st) && (
-            <Btn kind="ghost" small style={{ color: T.red, borderColor: T.red + "44" }} onClick={() => onUpdateLead(lead.id, { status: "lost" }, "Marked lost")}>
+            <Btn
+              kind="ghost"
+              small
+              style={{ color: T.red, borderColor: T.red + "44" }}
+              onClick={() => {
+                // Close out the musician side too, so a dead lead stops
+                // sitting in their Date Checks. Only while the add-on is
+                // still speculative — unbooking a musician who's actually
+                // booked is a call for the owner to make deliberately,
+                // not a side effect of marking the DJ side lost.
+                const patch: LeadUpdate = { status: "lost" };
+                if (["new", "pending_booking"].includes(lead.musician_stage)) patch.musician_stage = "archived";
+                onUpdateLead(lead.id, patch, "Marked lost");
+              }}
+            >
               LOST
             </Btn>
           )}
@@ -1799,7 +1813,12 @@ function MusicianLeadCard({
   // Once the owner's advanced musician_stage past "new" (pending_booking,
   // planning, etc.), that stage is the more meaningful tag than my own
   // available/pass response.
-  const respondedTag = lead.musician_stage !== "new"
+  // A lost lead outranks every musician-side state: the event isn't
+  // happening, so what the musician answered or which stage the add-on
+  // reached stops mattering.
+  const respondedTag = leadStatus(lead) === "lost"
+    ? { label: "LOST", color: T.red }
+    : lead.musician_stage !== "new"
     ? musicianStageDisplay(lead)
     : myAnswer === "available"
     ? { label: "AVAILABLE", color: T.green }
@@ -1844,6 +1863,7 @@ function MusicianLeadCard({
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {booking && lead.assigned_dj_name && <Tag color={T.violet}>DJ: {lead.assigned_dj_name}</Tag>}
                 {booking && <BookedMusicianTags musicians={lead.booked_musicians} />}
+                <Lamp color={respondedTag.color} pulse={respondedTag.label === "DATE CHECK NEEDED"} />
                 <Tag color={respondedTag.color}>{respondedTag.label}</Tag>
                 <span style={{ color: T.dim, fontSize: 11, marginLeft: 2 }}>{expanded ? "▴" : "▾"}</span>
               </div>
@@ -2899,8 +2919,13 @@ export default function BoardApp({
   const instrumentVisible = (l: LeadRow) => !!myInstrument && instrumentMentioned(l, myInstrument);
   // Every tab below keys off musician_stage rather than the DJ-side
   // status — the two pipelines run independently (see leads_feed and the
-  // musician_stage column comment in schema.sql).
-  const newMusicianLeads = leads.filter((l) => l.musician_stage === "new");
+  // musician_stage column comment in schema.sql). Lost is the exception:
+  // the event isn't happening at all, so it drops out of Date Checks
+  // regardless of musician_stage. Filtered here rather than relying on
+  // the stage alone so it also covers leads marked lost before the owner
+  // action started archiving the musician side too.
+  const djLost = (l: LeadRow) => leadStatus(l) === "lost";
+  const newMusicianLeads = leads.filter((l) => l.musician_stage === "new" && !djLost(l));
   const myMusicianChecks = newMusicianLeads.filter(instrumentVisible).filter((l) => !myMusicianLeadIds.has(l.id));
   const needsMeMusician = myMusicianChecks.filter((l) => !myAvailability[l.id]);
   const myMusicianMarkedAvailable = myMusicianChecks.filter((l) => myAvailability[l.id] === "available");
@@ -2920,10 +2945,12 @@ export default function BoardApp({
     l.musician_stage === "pending_booking" && instrumentVisible(l) && myAvailability[l.id] === "available" && !myMusicianLeadIds.has(l.id)
   );
   // Archive: dead ends — the owner called it archived or booked-with-no-
-  // musician, or I personally passed while it was still fresh.
+  // musician, the lead itself was lost, or I personally passed while it
+  // was still fresh. Lost leads land here rather than vanishing outright,
+  // so a musician who answered one can still see what became of it.
   const myMusicianArchive = leads.filter((l) =>
     instrumentVisible(l) && !myMusicianLeadIds.has(l.id)
-    && (["archived", "booked_no_musician"].includes(l.musician_stage) || myAvailability[l.id] === "pass")
+    && (["archived", "booked_no_musician"].includes(l.musician_stage) || djLost(l) || myAvailability[l.id] === "pass")
   );
 
   // Austin can pick up leads like any DJ, but his account stays
