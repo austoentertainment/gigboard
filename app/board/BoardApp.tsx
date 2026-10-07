@@ -1442,7 +1442,7 @@ function ManualForm({
   companySettings: CompanySettings | null;
 }) {
   const [f, setF] = useState({
-    name: "", fianceName: "", contact: "", date: "", location: "", djTier: "", prodTier: "",
+    name: "", fianceName: "", contact: "", phone: "", date: "", location: "", djTier: "", prodTier: "",
     upgrades: "", vision: "", source: "", djNotes: "", payout: "",
     travelZone: "", travelRate: "",
   });
@@ -1455,6 +1455,7 @@ function ManualForm({
         <Field label="CLIENT"><Input value={f.name} onChange={set("name")} placeholder="Jess" /></Field>
         <Field label="FIANCÉ / PARTNER"><Input value={f.fianceName} onChange={set("fianceName")} placeholder="Marco" /></Field>
         <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} placeholder="email or phone" /></Field>
+        <Field label="PHONE (FOR TEXT FOLLOW-UP)"><Input value={f.phone} onChange={set("phone")} placeholder="7145551234" /></Field>
         <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
       </div>
       <SectionLabel>EVENT</SectionLabel>
@@ -1503,7 +1504,8 @@ function ManualForm({
         <Btn kind="primary" onClick={() => {
           if (!f.name.trim() && !f.date) { ping("Give it at least a name or a date"); return; }
           onSave({
-            client_name: f.name, fiance_name: f.fianceName, contact: f.contact, event_date: f.date || null, location: f.location,
+            client_name: f.name, fiance_name: f.fianceName, contact: f.contact,
+            phone: f.phone.replace(/\D/g, "") || null, event_date: f.date || null, location: f.location,
             dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
             upgrades: f.upgrades, client_vision: f.vision, source: "manual",
             dj_notes: f.djNotes, payout: f.payout ? Number(f.payout) : null, status: "checking",
