@@ -131,6 +131,7 @@ export interface Database {
           followup_message: string | null;
           followup_error: string | null;
           followup_updated_at: string | null;
+          followup_round: number;
         };
         Insert: {
           client_name?: string | null;
@@ -165,6 +166,7 @@ export interface Database {
           followup_message?: string | null;
           followup_error?: string | null;
           followup_updated_at?: string | null;
+          followup_round?: number;
         };
         Update: {
           client_name?: string | null;
@@ -197,6 +199,7 @@ export interface Database {
           followup_message?: string | null;
           followup_error?: string | null;
           followup_updated_at?: string | null;
+          followup_round?: number;
         };
         Relationships: [];
       };
@@ -267,8 +270,8 @@ export interface Database {
           travel_extended_local_rate: number;
           travel_regional_rate: number;
           travel_central_ca_rate: number;
-          sms_template_with_date: string;
-          sms_template_no_date: string;
+          sms_template_1: string;
+          sms_template_2: string;
         };
         Insert: {
           id?: number;
@@ -282,8 +285,8 @@ export interface Database {
           travel_extended_local_rate?: number;
           travel_regional_rate?: number;
           travel_central_ca_rate?: number;
-          sms_template_with_date?: string;
-          sms_template_no_date?: string;
+          sms_template_1?: string;
+          sms_template_2?: string;
         };
         Update: {
           headliner_rate?: number;
@@ -296,8 +299,8 @@ export interface Database {
           travel_extended_local_rate?: number;
           travel_regional_rate?: number;
           travel_central_ca_rate?: number;
-          sms_template_with_date?: string;
-          sms_template_no_date?: string;
+          sms_template_1?: string;
+          sms_template_2?: string;
         };
         Relationships: [];
       };

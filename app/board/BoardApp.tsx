@@ -32,6 +32,7 @@ type FollowupRow = {
   followup_sent_at: string | null;
   followup_message: string | null;
   followup_error: string | null;
+  followup_round: number;
 };
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
@@ -631,18 +632,17 @@ function MusicianBooking({
 // Mirrors ~/austo-followup/config.json — the board's note has to name the
 // same window the script actually sends in.
 const FOLLOWUP_WINDOW = "8:30am–8:30pm";
-// Only these can be (re)queued. Matches the guard the server route runs as
-// a conditional update, so the button can't offer something the API will
-// refuse.
-const FOLLOWUP_QUEUEABLE: FollowupStatus[] = ["awaiting_approval", "failed", "skipped_stale"];
-
 function followupBadge(f: FollowupRow | undefined): { label: string; color: string; detail?: string } {
   const status = f?.followup_status ?? "awaiting_approval";
   switch (status) {
     case "pending": return { label: "QUEUED", color: T.yellow };
     case "sending": return { label: "SENDING", color: T.accent };
     case "sent": return {
-      label: f?.followup_sent_at
+      label: (f?.followup_round ?? 0) >= 2
+        ? (f?.followup_sent_at
+            ? `2ND SENT ✓ ${new Date(f.followup_sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+            : "2ND SENT ✓")
+        : f?.followup_sent_at
         ? `SENT ✓ ${new Date(f.followup_sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
         : "SENT ✓",
       color: T.green,
@@ -666,21 +666,37 @@ function followupDateLabel(eventDate: string) {
 // Fallbacks only matter before the settings migration runs — after that
 // the wording lives in company_settings and is edited from Settings.
 const SMS_TEMPLATE_FALLBACK = {
-  withDate: "Hey {first_name}! It's Austin from Austo Entertainment 🕺 Just saw your inquiry for {event_date}, congrats! Do you have time this week for a quick call so I can hear about your plans?",
-  noDate: "Hey {first_name}! It's Austin from Austo Entertainment 🕺 Just saw your inquiry come through, thanks for reaching out! Do you have time this week for a quick call?",
+  one: "Hey {first_name}! It's Austin from Austo Entertainment 🕺 Just saw your inquiry for {event_date}, congrats! Do you have time this week for a quick call so I can hear about your plans?",
+  two: "Hey {first_name}, Austin from Austo Entertainment again! Still would love to hear about your {event_date} plans — any chance you have a few minutes this week for a quick call?",
 };
 
 export function renderSmsTemplate(template: string, firstName: string, eventDate: string | null) {
   return template
     .replace(/\{first_name\}/g, firstName)
-    .replace(/\{event_date\}/g, eventDate ? followupDateLabel(eventDate) : "");
+    // Leads are expected to have dates, but an empty substitution would
+    // leave a sentence like "your inquiry for ," so fall back to wording
+    // that still reads.
+    .replace(/\{event_date\}/g, eventDate ? followupDateLabel(eventDate) : "your event");
 }
 
-function followupDraft(lead: LeadRow, settings: CompanySettings | null) {
+// Which template the next text should use, or null when there's nothing
+// left to send. Round 2 unlocks only after round 1 actually reaches
+// 'sent' — a failed or cancelled attempt retries the same round rather
+// than advancing past it.
+function nextFollowupRound(status: FollowupStatus, round: number): 1 | 2 | null {
+  if (status === "sent") return round >= 2 ? null : 2;
+  if (["awaiting_approval", "failed", "skipped_stale", "skipped_no_phone", "skipped_no_consent"].includes(status)) {
+    const next = round || 1;
+    return next > 2 ? null : (next as 1 | 2);
+  }
+  return null; // pending / sending — one is already in flight
+}
+
+function followupDraft(lead: LeadRow, settings: CompanySettings | null, round: 1 | 2) {
   const firstName = (lead.client_name || "").trim().split(/\s+/)[0] || "there";
-  const template = lead.event_date
-    ? settings?.sms_template_with_date || SMS_TEMPLATE_FALLBACK.withDate
-    : settings?.sms_template_no_date || SMS_TEMPLATE_FALLBACK.noDate;
+  const template = round === 2
+    ? settings?.sms_template_2 || SMS_TEMPLATE_FALLBACK.two
+    : settings?.sms_template_1 || SMS_TEMPLATE_FALLBACK.one;
   return renderSmsTemplate(template, firstName, lead.event_date);
 }
 
@@ -698,13 +714,17 @@ function FollowupSection({
   const [busy, setBusy] = useState(false);
   const badge = followupBadge(followup);
   const status = followup?.followup_status ?? "awaiting_approval";
-  const canQueue = FOLLOWUP_QUEUEABLE.includes(status);
+  const round = followup?.followup_round ?? 0;
+  const nextRound = nextFollowupRound(status, round);
   const hasPhone = !!followup?.phone;
 
   const openDraft = () => {
-    // Reuse whatever was last queued so edits survive a cancel; fall back
-    // to the template for a lead that's never been drafted.
-    setDraft(followup?.followup_message || followupDraft(lead, companySettings));
+    if (!nextRound) return;
+    // A retry of the same round reuses whatever was last queued, so edits
+    // survive a cancel. Moving up a round always starts from that round's
+    // template instead of the previous text.
+    const reuse = nextRound === round ? followup?.followup_message : null;
+    setDraft(reuse || followupDraft(lead, companySettings, nextRound));
     setDrafting(true);
   };
 
@@ -716,10 +736,15 @@ function FollowupSection({
         {badge.detail && <span style={{ fontSize: 11.5, color: T.dim }}>{badge.detail}</span>}
       </div>
 
-      {!drafting && canQueue && (
+      {!drafting && nextRound && (
         hasPhone ? (
-          <Btn small onClick={openDraft} style={{ alignSelf: "flex-start" }}>
-            {status === "awaiting_approval" ? "SEND TEXT" : "SEND TEXT AGAIN"}
+          <Btn
+            small
+            kind={nextRound === 2 ? "primary" : "ghost"}
+            onClick={openDraft}
+            style={{ alignSelf: "flex-start" }}
+          >
+            {nextRound === 2 ? "SEND 2ND FOLLOW-UP" : status === "awaiting_approval" ? "SEND TEXT" : "SEND TEXT AGAIN"}
           </Btn>
         ) : (
           // Queueing without a number just round-trips to skipped_no_phone
@@ -766,8 +791,9 @@ function FollowupSection({
         </div>
       )}
 
-      {(canQueue || status === "pending") && (
+      {(nextRound || status === "pending") && (
         <div style={{ fontSize: 11, color: T.dim }}>
+          {nextRound === 2 && "Second follow-up. "}
           Sends from Austin&apos;s iMessage within ~5 min when the Mac is awake, {FOLLOWUP_WINDOW}.
         </div>
       )}
@@ -2119,8 +2145,8 @@ function CompanySettings({
     travel_extended_local_rate: String(settings.travel_extended_local_rate),
     travel_regional_rate: String(settings.travel_regional_rate),
     travel_central_ca_rate: String(settings.travel_central_ca_rate),
-    sms_template_with_date: settings.sms_template_with_date || SMS_TEMPLATE_FALLBACK.withDate,
-    sms_template_no_date: settings.sms_template_no_date || SMS_TEMPLATE_FALLBACK.noDate,
+    sms_template_1: settings.sms_template_1 || SMS_TEMPLATE_FALLBACK.one,
+    sms_template_2: settings.sms_template_2 || SMS_TEMPLATE_FALLBACK.two,
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
@@ -2164,21 +2190,21 @@ function CompanySettings({
           ({"{event_date}"} reads as &ldquo;June 14&rdquo;, with the year added when it isn&apos;t this year).
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Field label="WHEN THE LEAD HAS AN EVENT DATE">
-            <TextArea value={f.sms_template_with_date} onChange={set("sms_template_with_date")} style={{ minHeight: 92 }} />
+          <Field label="FIRST TEXT">
+            <TextArea value={f.sms_template_1} onChange={set("sms_template_1")} style={{ minHeight: 92 }} />
           </Field>
-          <Field label="WHEN THERE'S NO DATE YET">
-            <TextArea value={f.sms_template_no_date} onChange={set("sms_template_no_date")} style={{ minHeight: 80 }} />
+          <Field label="SECOND FOLLOW-UP — AVAILABLE ONCE THE FIRST HAS SENT">
+            <TextArea value={f.sms_template_2} onChange={set("sms_template_2")} style={{ minHeight: 92 }} />
           </Field>
         </div>
         <div style={{ fontSize: 11.5, color: T.dim, marginTop: 10 }}>
           <strong style={{ color: T.text }}>Preview:</strong>{" "}
-          {renderSmsTemplate(f.sms_template_with_date, "Haley", "2027-06-14")}
+          {renderSmsTemplate(f.sms_template_1, "Haley", "2027-06-14")}
         </div>
       </div>
       <Btn kind="primary" style={{ alignSelf: "flex-start" }} onClick={() => onSave({
-        sms_template_with_date: f.sms_template_with_date,
-        sms_template_no_date: f.sms_template_no_date,
+        sms_template_1: f.sms_template_1,
+        sms_template_2: f.sms_template_2,
         headliner_rate: Number(f.headliner_rate) || 0,
         resident_rate: Number(f.resident_rate) || 0,
         associate_rate: Number(f.associate_rate) || 0,
@@ -2695,7 +2721,7 @@ export default function BoardApp({
       // Straight off `leads` rather than leads_feed — RLS already limits
       // this table to the owner, and these columns stay out of the view so
       // DJs and musicians never receive a client's phone number.
-      const followupCols = "id, phone, followup_status, followup_requested_at, followup_sent_at, followup_message, followup_error";
+      const followupCols = "id, phone, followup_status, followup_requested_at, followup_sent_at, followup_message, followup_error, followup_round";
       const followupResult = await supabase.from("leads").select(followupCols);
       const followupError = followupResult.error;
       let followupData = followupResult.data;

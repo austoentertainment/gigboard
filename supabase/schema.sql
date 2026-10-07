@@ -229,7 +229,11 @@ create table public.leads (
   followup_sent_at timestamptz,
   followup_message text,
   followup_error text,
-  followup_updated_at timestamptz
+  followup_updated_at timestamptz,
+  -- Which of the two templates the current (or last) text used. 0 means
+  -- nothing has been queued yet. Template 2 is only offered once round 1
+  -- reaches 'sent', so the second follow-up can't jump the first.
+  followup_round int not null default 0
 );
 
 alter table public.leads enable row level security;
@@ -662,14 +666,14 @@ create table public.company_settings (
   travel_extended_local_rate numeric not null default 100,
   travel_regional_rate numeric not null default 300,
   travel_central_ca_rate numeric not null default 400,
-  -- Editable from the Settings tab so the follow-up wording isn't buried
-  -- in the code. {first_name} and {event_date} are substituted when a
-  -- draft is opened; the owner can still edit any individual draft before
-  -- queueing it.
-  sms_template_with_date text not null default
+  -- The two follow-up texts, editable from the Settings tab so the wording
+  -- isn't buried in code. {first_name} and {event_date} are substituted
+  -- when a draft opens. Template 2 only becomes available once template 1
+  -- has actually sent — see followup_round on leads.
+  sms_template_1 text not null default
     'Hey {first_name}! It''s Austin from Austo Entertainment 🕺 Just saw your inquiry for {event_date}, congrats! Do you have time this week for a quick call so I can hear about your plans?',
-  sms_template_no_date text not null default
-    'Hey {first_name}! It''s Austin from Austo Entertainment 🕺 Just saw your inquiry come through, thanks for reaching out! Do you have time this week for a quick call?'
+  sms_template_2 text not null default
+    'Hey {first_name}, Austin from Austo Entertainment again! Still would love to hear about your {event_date} plans — any chance you have a few minutes this week for a quick call?'
 );
 
 insert into public.company_settings (id) values (1);
