@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService } from "@/lib/supabase/types";
+import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianService, FollowupStatus } from "@/lib/supabase/types";
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import { anyInstrumentMentioned, instrumentMentioned } from "@/lib/instruments";
 import {
@@ -21,6 +21,18 @@ type AvailabilityRow = { lead_id: string; dj_user_id: string; response: "availab
 type LeaderboardRow = Database["public"]["Views"]["dj_leaderboard"]["Row"];
 type EventRow = Database["public"]["Tables"]["events"]["Row"];
 type LeadMusicianRow = Database["public"]["Tables"]["lead_musicians"]["Row"];
+// Fetched straight from `leads` for the owner rather than widened into
+// leads_feed: the client's phone number and the follow-up trail are the
+// owner's business, and leads_feed is what DJs and musicians read.
+type FollowupRow = {
+  id: string;
+  phone: string | null;
+  followup_status: FollowupStatus;
+  followup_requested_at: string | null;
+  followup_sent_at: string | null;
+  followup_message: string | null;
+  followup_error: string | null;
+};
 
 const tierStr = (l: LeadRow) => [l.dj_tier, l.prod_tier].filter(Boolean).join(" + ");
 const byDate = (a: LeadRow, b: LeadRow) => ((a.event_date || "9999") > (b.event_date || "9999") ? 1 : -1);
@@ -615,11 +627,146 @@ function MusicianBooking({
   );
 }
 
-function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patch: LeadUpdate) => void; onCancel: () => void }) {
+
+// Mirrors ~/austo-followup/config.json — the board's note has to name the
+// same window the script actually sends in.
+const FOLLOWUP_WINDOW = "8:30am–8:30pm";
+// Only these can be (re)queued. Matches the guard the server route runs as
+// a conditional update, so the button can't offer something the API will
+// refuse.
+const FOLLOWUP_QUEUEABLE: FollowupStatus[] = ["awaiting_approval", "failed", "skipped_stale"];
+
+function followupBadge(f: FollowupRow | undefined): { label: string; color: string; detail?: string } {
+  const status = f?.followup_status ?? "awaiting_approval";
+  switch (status) {
+    case "pending": return { label: "QUEUED", color: T.yellow };
+    case "sending": return { label: "SENDING", color: T.accent };
+    case "sent": return {
+      label: f?.followup_sent_at
+        ? `SENT ✓ ${new Date(f.followup_sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+        : "SENT ✓",
+      color: T.green,
+    };
+    case "failed": return { label: "TEXT FAILED", color: T.red, detail: f?.followup_error || undefined };
+    case "skipped_no_phone": return { label: "SKIPPED", color: T.dim, detail: "no phone number on file" };
+    case "skipped_no_consent": return { label: "SKIPPED", color: T.dim, detail: "no SMS consent on file" };
+    case "skipped_stale": return { label: "SKIPPED", color: T.dim, detail: "sat in the queue too long to send" };
+    default: return { label: "NOT TEXTED", color: T.dim };
+  }
+}
+
+// "June 14", plus the year when it isn't this one — matching how Austin
+// writes dates to clients rather than the board's own compact format.
+function followupDateLabel(eventDate: string) {
+  const d = new Date(eventDate + "T12:00:00");
+  const base = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  return d.getFullYear() === new Date().getFullYear() ? base : `${base}, ${d.getFullYear()}`;
+}
+
+function followupDraft(lead: LeadRow) {
+  const firstName = (lead.client_name || "").trim().split(/\s+/)[0] || "there";
+  if (!lead.event_date) {
+    return `Hey ${firstName}! It's Austin from Austo Entertainment 🕺 Just saw your inquiry come through, thanks for reaching out! Do you have time this week for a quick call?`;
+  }
+  return `Hey ${firstName}! It's Austin from Austo Entertainment 🕺 Just saw your inquiry for ${followupDateLabel(lead.event_date)}, congrats! Do you have time this week for a quick call so I can hear about your plans?`;
+}
+
+function FollowupSection({
+  lead, followup, onQueue, onCancel,
+}: {
+  lead: LeadRow;
+  followup?: FollowupRow;
+  onQueue: (leadId: string, message: string) => Promise<boolean>;
+  onCancel: (leadId: string) => Promise<boolean>;
+}) {
+  const [drafting, setDrafting] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const badge = followupBadge(followup);
+  const status = followup?.followup_status ?? "awaiting_approval";
+  const canQueue = FOLLOWUP_QUEUEABLE.includes(status);
+  const hasPhone = !!followup?.phone;
+
+  const openDraft = () => {
+    // Reuse whatever was last queued so edits survive a cancel; fall back
+    // to the template for a lead that's never been drafted.
+    setDraft(followup?.followup_message || followupDraft(lead));
+    setDrafting(true);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.dim }}>TEXT FOLLOW-UP</span>
+        <Tag color={badge.color}>{badge.label}</Tag>
+        {badge.detail && <span style={{ fontSize: 11.5, color: T.dim }}>{badge.detail}</span>}
+      </div>
+
+      {!drafting && canQueue && (
+        hasPhone ? (
+          <Btn small onClick={openDraft} style={{ alignSelf: "flex-start" }}>
+            {status === "awaiting_approval" ? "SEND TEXT" : "SEND TEXT AGAIN"}
+          </Btn>
+        ) : (
+          // Queueing without a number just round-trips to skipped_no_phone
+          // five minutes later, so say so now instead.
+          <span style={{ fontSize: 11.5, color: T.red }}>
+            No phone number on file — add one in Edit Lead before texting.
+          </span>
+        )
+      )}
+
+      {!drafting && status === "pending" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Btn
+            small
+            disabled={busy}
+            style={{ color: T.red, borderColor: T.red + "44" }}
+            onClick={async () => { setBusy(true); await onCancel(lead.id); setBusy(false); }}
+          >
+            CANCEL
+          </Btn>
+          <span style={{ fontSize: 11.5, color: T.dim }}>Queued — cancel only works until the Mac picks it up.</span>
+        </div>
+      )}
+
+      {drafting && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <TextArea value={draft} onChange={(e) => setDraft(e.target.value)} style={{ minHeight: 92 }} />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn
+              kind="primary"
+              small
+              disabled={busy || !draft.trim()}
+              onClick={async () => {
+                setBusy(true);
+                const ok = await onQueue(lead.id, draft.trim());
+                setBusy(false);
+                if (ok) setDrafting(false);
+              }}
+            >
+              {busy ? "QUEUEING…" : "CONFIRM & QUEUE"}
+            </Btn>
+            <Btn small onClick={() => setDrafting(false)}>CANCEL</Btn>
+          </div>
+        </div>
+      )}
+
+      {(canQueue || status === "pending") && (
+        <div style={{ fontSize: 11, color: T.dim }}>
+          Sends from Austin&apos;s iMessage within ~5 min when the Mac is awake, {FOLLOWUP_WINDOW}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditLeadForm({ lead, phone, onSave, onCancel }: { lead: LeadRow; phone: string | null; onSave: (patch: LeadUpdate) => void; onCancel: () => void }) {
   const [f, setF] = useState({
     name: lead.client_name || "",
     fianceName: lead.fiance_name || "",
     contact: lead.contact || "",
+    phone: phone || "",
     date: lead.event_date || "",
     location: lead.location || "",
     djTier: lead.dj_tier || "",
@@ -641,6 +788,11 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Field label="CONTACT"><Input value={f.contact} onChange={set("contact")} /></Field>
         <Field label="EVENT DATE"><Input type="date" value={f.date} onChange={set("date")} /></Field>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {/* Separate from CONTACT because the follow-up texter dials this
+            one — a number mixed into free text can't be sent to. */}
+        <Field label="PHONE (FOR TEXT FOLLOW-UP)"><Input value={f.phone} onChange={set("phone")} placeholder="7145551234" /></Field>
       </div>
       <SectionLabel>EVENT</SectionLabel>
       <Field label="LOCATION"><Input value={f.location} onChange={set("location")} /></Field>
@@ -684,7 +836,8 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
       <div style={{ fontSize: 11.5, color: T.dim }}>Payout, travel, and deposit status are edited directly on the card, not here.</div>
       <div style={{ display: "flex", gap: 8 }}>
         <Btn kind="primary" onClick={() => onSave({
-          client_name: f.name, fiance_name: f.fianceName, contact: f.contact, event_date: f.date || null,
+          client_name: f.name, fiance_name: f.fianceName, contact: f.contact,
+          phone: f.phone.replace(/\D/g, "") || null, event_date: f.date || null,
           location: f.location, dj_tier: (f.djTier || null) as DjTier | null, prod_tier: (f.prodTier || null) as ProdTier | null,
           upgrades: f.upgrades, client_vision: f.vision, dj_notes: f.djNotes,
         })}>SAVE CHANGES</Btn>
@@ -695,7 +848,7 @@ function EditLeadForm({ lead, onSave, onCancel }: { lead: LeadRow; onSave: (patc
 }
 
 function LeadCard({
-  lead, djView, roster, availability, myAnswer, highlighted, busy, userId, onFetchHistory,
+  lead, djView, roster, availability, myAnswer, highlighted, busy, userId, onFetchHistory, followup, onQueueText, onCancelText,
   musicianRoster, rosterProfiles, leadMusicians, onBookMusician, onUnbookMusician, onUpdateMusicianBooking,
   onAddMusicianToHold,
   onMusicianMeetingBooked, onMarkMusicianBooked, onMarkMusicianLost, onUndoMusicianPlanning, onRemoveAvailability,
@@ -710,6 +863,10 @@ function LeadCard({
   busy?: boolean;
   userId: string;
   onFetchHistory: (leadId: string) => Promise<EventRow[]>;
+  // Owner-only; undefined for DJ/musician cards, which never receive it.
+  followup?: FollowupRow;
+  onQueueText: (leadId: string, message: string) => Promise<boolean>;
+  onCancelText: (leadId: string) => Promise<boolean>;
   musicianRoster: RosterUser[];
   rosterProfiles: { user_id: string; instrument: Instrument | null }[];
   leadMusicians: LeadMusicianRow[];
@@ -823,6 +980,7 @@ function LeadCard({
         {editing ? (
           <EditLeadForm
             lead={lead}
+            phone={followup?.phone ?? null}
             onSave={(patch) => { onUpdateLead(lead.id, patch, "Lead updated"); setEditing(false); }}
             onCancel={() => setEditing(false)}
           />
@@ -944,6 +1102,10 @@ function LeadCard({
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: T.dim, alignItems: "center" }}>
             <ViboLinkEditor lead={lead} onSave={(id, viboLink) => onUpdateLead(id, { vibo_link: viboLink }, "Vibo link updated")} />
           </div>
+        )}
+
+        {expanded && !djView && (
+          <FollowupSection lead={lead} followup={followup} onQueue={onQueueText} onCancel={onCancelText} />
         )}
 
         {expanded && !djView && (
@@ -1171,7 +1333,7 @@ function ImportForm({
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [parsed, setParsed] = useState<null | {
-    name: string; fianceName: string; contact: string; date: string; location: string;
+    name: string; fianceName: string; contact: string; phone: string; date: string; location: string;
     djTier: string; prodTier: string; upgrades: string; vision: string; payout: string;
     travelZone: string; travelRate: string;
   }>(null);
@@ -1206,7 +1368,7 @@ function ImportForm({
   const save = () => {
     if (!parsed) return;
     onSave({
-      client_name: parsed.name, fiance_name: parsed.fianceName, contact: parsed.contact, event_date: parsed.date || null,
+      client_name: parsed.name, fiance_name: parsed.fianceName, contact: parsed.contact, phone: parsed.phone || null, event_date: parsed.date || null,
       location: parsed.location, dj_tier: (parsed.djTier || null) as DjTier | null,
       prod_tier: (parsed.prodTier || null) as ProdTier | null, upgrades: parsed.upgrades,
       client_vision: parsed.vision, source: "honeybook", status: "checking",
@@ -2386,6 +2548,7 @@ export default function BoardApp({
   const [musicianRoster, setMusicianRoster] = useState<RosterUser[]>([]);
   const [rosterProfiles, setRosterProfiles] = useState<{ user_id: string; dj_tier_visibility: DjTier[]; instrument: Instrument | null; notify_email: boolean }[]>([]);
   const [leadMusicians, setLeadMusicians] = useState<LeadMusicianRow[]>([]);
+  const [followups, setFollowups] = useState<Record<string, FollowupRow>>({});
   const [myMusicianBookings, setMyMusicianBookings] = useState<LeadMusicianRow[]>([]);
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
   const [myAvailability, setMyAvailability] = useState<Record<string, "available" | "pass">>({});
@@ -2486,6 +2649,13 @@ export default function BoardApp({
       // response lives in the same table as every DJ's, just keyed by his
       // own userId, so it's already in availData above.
       setMyAvailability(Object.fromEntries((availData ?? []).filter((r) => r.dj_user_id === userId).map((r) => [r.lead_id, r.response])));
+      // Straight off `leads` rather than leads_feed — RLS already limits
+      // this table to the owner, and these columns stay out of the view so
+      // DJs and musicians never receive a client's phone number.
+      const { data: followupData } = await supabase
+        .from("leads")
+        .select("id, phone, followup_status, followup_requested_at, followup_sent_at, followup_message, followup_error");
+      setFollowups(Object.fromEntries((followupData ?? []).map((f) => [f.id, f as FollowupRow])));
       const { data: leadMusiciansData } = await supabase.from("lead_musicians").select("*");
       setLeadMusicians(leadMusiciansData ?? []);
       const { data: settingsData } = await supabase.from("company_settings").select("*").eq("id", 1).single();
@@ -2799,6 +2969,31 @@ export default function BoardApp({
     ping("Rates updated");
     loadData();
   };
+
+  const followupRequest = async (body: Record<string, unknown>, okMessage: string) => {
+    const res = await fetch("/api/followup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // A 409 here means the Mac script moved the row underneath us —
+      // reload so the badge shows where it actually landed.
+      ping(data.error || "Couldn't update that text");
+      loadData();
+      return false;
+    }
+    ping(okMessage);
+    loadData();
+    return true;
+  };
+
+  const queueText = (leadId: string, message: string) =>
+    followupRequest({ leadId, message }, "Queued — sends within ~5 min");
+
+  const cancelText = (leadId: string) =>
+    followupRequest({ leadId, action: "cancel" }, "Text cancelled");
 
   const addLead = async (fields: LeadInsert) => {
     const { data, error } = await supabase.from("leads").insert(fields).select("id").single();
@@ -3183,7 +3378,7 @@ export default function BoardApp({
                   <LeadCard
                     lead={l} djView={role === "dj"} roster={role === "owner" ? assignableRoster : roster} availability={availability}
                     myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId}
-                    onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians}
+                    onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians}
                     onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail}
                     onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes}
                   />
@@ -3209,7 +3404,7 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: TIER_COLORS.Headliner }}>HEADLINER LEADS — YOUR CALL</div>
             )}
             {sortSection(headlinerAwaitingMe, pipelineSort).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.length > 0 && <SortToggle sortBy={pipelineSort.by} sortDir={pipelineSort.dir} onChange={toggleSectionSort(setPipelineSort)} />}
             {checking.length === 0 && !showAdd && (
@@ -3219,13 +3414,13 @@ export default function BoardApp({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.green }}>DJ AVAILABLE — CONTACT THESE LEADS</div>
             )}
             {sortSection(checking.filter((l) => leadStatus(l) === "ready" && !isAwaitingMyHeadlinerCall(l)), pipelineSort).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
             {checking.filter((l) => leadStatus(l) === "checking" && !isAwaitingMyHeadlinerCall(l)).length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", color: T.accent, marginTop: 4 }}>WAITING ON DATE CHECKS</div>
             )}
             {sortSection(checking.filter((l) => leadStatus(l) === "checking"), pipelineSort).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3241,7 +3436,7 @@ export default function BoardApp({
                 <SectionLabel>MEETING BOOKED</SectionLabel>
                 <SortToggle sortBy={ownerMeetingBookedSort.by} sortDir={ownerMeetingBookedSort.dir} onChange={toggleSectionSort(setOwnerMeetingBookedSort)} />
                 {sortSection(filteredMeetings, ownerMeetingBookedSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3250,7 +3445,7 @@ export default function BoardApp({
                 <SectionLabel>FOLLOW UP</SectionLabel>
                 <SortToggle sortBy={ownerFollowUpSort.by} sortDir={ownerFollowUpSort.dir} onChange={toggleSectionSort(setOwnerFollowUpSort)} />
                 {sortSection(filteredPending, ownerFollowUpSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3265,7 +3460,7 @@ export default function BoardApp({
               <Empty text={motionDjFilter === "all" ? "No upcoming booked gigs yet." : "No upcoming booked gigs for this DJ yet."} />
             )}
             {sortLeads(filteredUpcoming).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3278,7 +3473,7 @@ export default function BoardApp({
               <Empty text={motionDjFilter === "all" ? "Nothing here — booked gigs whose date has passed show up until marked completed." : "No past booked gigs for this DJ yet."} />
             )}
             {sortLeads(filteredPast).map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3287,7 +3482,7 @@ export default function BoardApp({
           <>
             {archived.length === 0 && <Empty text="Completed and lost leads end up here." />}
             {archived.map((l) => (
-              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} roster={assignableRoster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3345,7 +3540,7 @@ export default function BoardApp({
                 <SectionLabel large>NEED AVAILABILITY</SectionLabel>
                 <SortToggle sortBy={needAvailSort.by} sortDir={needAvailSort.dir} onChange={toggleSectionSort(setNeedAvailSort)} />
                 {sortSection(needsMe, needAvailSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             ) : myChecks.length > 0 && <Empty text="All caught up!" />}
@@ -3354,7 +3549,7 @@ export default function BoardApp({
                 <SectionLabel large>MARKED AVAILABLE</SectionLabel>
                 <SortToggle sortBy={markedAvailSort.by} sortDir={markedAvailSort.dir} onChange={toggleSectionSort(setMarkedAvailSort)} />
                 {sortSection(myMarkedAvailable, markedAvailSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3371,7 +3566,7 @@ export default function BoardApp({
                 <SectionLabel large>PENDING BOOKING</SectionLabel>
                 <SortToggle sortBy={pendingBookingSort.by} sortDir={pendingBookingSort.dir} onChange={toggleSectionSort(setPendingBookingSort)} />
                 {sortSection(myAssignedMeeting, pendingBookingSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3380,7 +3575,7 @@ export default function BoardApp({
                 <SectionLabel large>SCHEDULED TO MEET WITH AUSTO</SectionLabel>
                 <SortToggle sortBy={awaitingSelectionSort.by} sortDir={awaitingSelectionSort.dir} onChange={toggleSectionSort(setAwaitingSelectionSort)} />
                 {sortSection(myAwaitingSelection, awaitingSelectionSort).map((l) => (
-                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+                  <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
                 ))}
               </>
             )}
@@ -3394,7 +3589,7 @@ export default function BoardApp({
             )}
             {myArchive.length > 0 && <SortToggle sortBy={sortBy} sortDir={sortDir} onChange={handleSortChange} />}
             {sortLeads(myArchive).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3403,7 +3598,7 @@ export default function BoardApp({
           <>
             {myUpcoming.length === 0 && <Empty text="No booked gigs yet — answer date checks and Austin books from there." />}
             {myUpcoming.sort(byDate).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}
@@ -3412,7 +3607,7 @@ export default function BoardApp({
           <>
             {myCompleted.length === 0 && <Empty text="Completed gigs show up here once the event has passed and you've been paid in full." />}
             {myCompleted.sort((a, b) => byDate(b, a)).map((l) => (
-              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
+              <LeadCard key={l.id} lead={l} djView roster={roster} availability={availability} myAnswer={myAvailability[l.id]} highlighted={l.id === highlightLeadId || l.id === jumpHighlightId} busy={busyLeadId === l.id} userId={userId} onFetchHistory={fetchLeadHistory} followup={followups[l.id]} onQueueText={queueText} onCancelText={cancelText} musicianRoster={musicianRoster} rosterProfiles={rosterProfiles} leadMusicians={leadMusicians} onBookMusician={bookMusician} onUnbookMusician={unbookMusician} onUpdateMusicianBooking={updateMusicianBooking} onAddMusicianToHold={addMusicianToHold} onMusicianMeetingBooked={musicianMeetingBooked} onMarkMusicianBooked={markMusicianBooked} onMarkMusicianLost={markMusicianLost} onUndoMusicianPlanning={undoMusicianPlanning} onRemoveAvailability={ownerRetractAvail} onSetAvail={setAvail} onRetractAvail={retractAvail} onUpdateLead={updateLead} onDeleteLead={deleteLead} onSaveNotes={saveNotes} />
             ))}
           </>
         )}

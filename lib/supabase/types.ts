@@ -10,6 +10,9 @@ export type AvailabilityAnswer = "available" | "pass";
 export type UserRole = "owner" | "dj" | "musician";
 export type Instrument = "Saxophone" | "Violin";
 export type MusicianStage = "new" | "pending_booking" | "planning" | "booked_no_musician" | "archived" | "complete";
+export type FollowupStatus =
+  | "awaiting_approval" | "pending" | "sending" | "sent"
+  | "failed" | "skipped_no_phone" | "skipped_no_consent" | "skipped_stale";
 export type MusicianService = "Ceremony" | "Cocktail Hour" | "Dinner" | "Formalities" | "2 Hours of Dancing";
 
 export interface Database {
@@ -121,6 +124,13 @@ export interface Database {
           vibo_link: string | null;
           musician_stage: MusicianStage;
           musician_meeting_date: string | null;
+          phone: string | null;
+          followup_status: FollowupStatus;
+          followup_requested_at: string | null;
+          followup_sent_at: string | null;
+          followup_message: string | null;
+          followup_error: string | null;
+          followup_updated_at: string | null;
         };
         Insert: {
           client_name?: string | null;
@@ -148,6 +158,13 @@ export interface Database {
           vibo_link?: string | null;
           musician_stage?: MusicianStage;
           musician_meeting_date?: string | null;
+          phone?: string | null;
+          followup_status?: FollowupStatus;
+          followup_requested_at?: string | null;
+          followup_sent_at?: string | null;
+          followup_message?: string | null;
+          followup_error?: string | null;
+          followup_updated_at?: string | null;
         };
         Update: {
           client_name?: string | null;
@@ -173,6 +190,13 @@ export interface Database {
           vibo_link?: string | null;
           musician_stage?: MusicianStage;
           musician_meeting_date?: string | null;
+          phone?: string | null;
+          followup_status?: FollowupStatus;
+          followup_requested_at?: string | null;
+          followup_sent_at?: string | null;
+          followup_message?: string | null;
+          followup_error?: string | null;
+          followup_updated_at?: string | null;
         };
         Relationships: [];
       };

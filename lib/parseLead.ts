@@ -5,6 +5,7 @@ export type ParsedLead = {
   name: string;
   fiance: string;
   contact: string;
+  phone: string;
   date: string;
   location: string;
   djTier: string;
@@ -17,7 +18,8 @@ export type ParsedLead = {
 const EXTRACTION_PROMPT = (raw: string) => `Extract lead info from this HoneyBook inquiry (email or copied text) for a wedding/event DJ company based in Orange County, California. Respond ONLY with a JSON object, no markdown fences, no preamble, with these keys (use "" when unknown):
 - client: the primary contact / the person who submitted this inquiry (e.g. "Jess & Marco" → "Jess"; if a field is literally labeled "Your Name" or "Contact Name", that person is always the client). Never leave this blank if ANY person's name appears anywhere in the inquiry — even if the only name present is labeled "partner", "fiancé", "fiancée", or similar, put that name here as the client rather than in fiance.
 - fiance: the client's partner, ONLY if the inquiry clearly names two separate people (e.g. "Jess & Marco" → "Marco", or explicit separate "Your Name" / "Partner's Name" fields both filled in). Else "".
-- contact: email or phone if present
+- contact: email or phone if present, as written in the inquiry
+- phone: the phone number on its own, digits only with no punctuation or country code (e.g. "7145551234"), if one appears anywhere in the inquiry. "" if there isn't one. This is what the follow-up texter dials, so never put an email here.
 - date: event date as YYYY-MM-DD
 - location: venue and/or city as one line (e.g. "The Colony House, Anaheim")
 - djTier: one of Headliner, Resident, Associate — only if the inquiry names a DJ tier or package that clearly maps to one
@@ -103,6 +105,13 @@ export async function parseLeadWithClaude(raw: string): Promise<ParsedLead> {
       name,
       fiance,
       contact: obj.contact || "",
+      // Belt-and-suspenders: strip anything non-numeric the model leaves
+      // behind, and drop results too short to be a real number rather than
+      // handing the texter a fragment.
+      phone: (() => {
+        const digits = String(obj.phone || "").replace(/\D/g, "");
+        return digits.length >= 10 ? digits : "";
+      })(),
       date: obj.date || "",
       location: obj.location || "",
       djTier: ["Headliner", "Resident", "Associate"].includes(obj.djTier) ? obj.djTier : "",

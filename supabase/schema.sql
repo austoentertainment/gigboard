@@ -212,7 +212,24 @@ create table public.leads (
   -- Set when the owner moves a lead to pending_booking — the client holds
   -- the date for 14 days from this meeting, shown as a reference deadline
   -- (no auto-expiry; the owner archives it by hand if it goes cold).
-  musician_meeting_date date
+  musician_meeting_date date,
+  -- Split out from the free-text `contact` blob so the follow-up script has
+  -- something it can actually dial. contact keeps whatever the inquiry
+  -- said; this is the normalized number on its own.
+  phone text,
+  -- Manual SMS follow-up, driven by the Mac script in ~/austo-followup.
+  -- The Gig Board queues (awaiting_approval -> pending), the script claims
+  -- (pending -> sending) and finishes (sent / failed / skipped_*). Both
+  -- sides move the status with a conditional update predicated on the
+  -- status they expect to find, so a queue and a claim can never both win.
+  -- followup_message is the exact text the script sends when set, which is
+  -- how the board's edited draft takes precedence over its own templates.
+  followup_status text not null default 'awaiting_approval',
+  followup_requested_at timestamptz,
+  followup_sent_at timestamptz,
+  followup_message text,
+  followup_error text,
+  followup_updated_at timestamptz
 );
 
 alter table public.leads enable row level security;

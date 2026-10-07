@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       client_name: parsed.name,
       fiance_name: parsed.fiance,
       contact: parsed.contact,
+      phone: parsed.phone || null,
       event_date: parsed.date || null,
       location: parsed.location,
       dj_tier: (parsed.djTier || null) as DjTier | null,
