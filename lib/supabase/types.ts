@@ -267,6 +267,8 @@ export interface Database {
           travel_extended_local_rate: number;
           travel_regional_rate: number;
           travel_central_ca_rate: number;
+          sms_template_with_date: string;
+          sms_template_no_date: string;
         };
         Insert: {
           id?: number;
@@ -280,6 +282,8 @@ export interface Database {
           travel_extended_local_rate?: number;
           travel_regional_rate?: number;
           travel_central_ca_rate?: number;
+          sms_template_with_date?: string;
+          sms_template_no_date?: string;
         };
         Update: {
           headliner_rate?: number;
@@ -292,6 +296,8 @@ export interface Database {
           travel_extended_local_rate?: number;
           travel_regional_rate?: number;
           travel_central_ca_rate?: number;
+          sms_template_with_date?: string;
+          sms_template_no_date?: string;
         };
         Relationships: [];
       };

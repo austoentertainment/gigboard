@@ -661,7 +661,15 @@ create table public.company_settings (
   travel_local_rate numeric not null default 0,
   travel_extended_local_rate numeric not null default 100,
   travel_regional_rate numeric not null default 300,
-  travel_central_ca_rate numeric not null default 400
+  travel_central_ca_rate numeric not null default 400,
+  -- Editable from the Settings tab so the follow-up wording isn't buried
+  -- in the code. {first_name} and {event_date} are substituted when a
+  -- draft is opened; the owner can still edit any individual draft before
+  -- queueing it.
+  sms_template_with_date text not null default
+    'Hey {first_name}! It''s Austin from Austo Entertainment 🕺 Just saw your inquiry for {event_date}, congrats! Do you have time this week for a quick call so I can hear about your plans?',
+  sms_template_no_date text not null default
+    'Hey {first_name}! It''s Austin from Austo Entertainment 🕺 Just saw your inquiry come through, thanks for reaching out! Do you have time this week for a quick call?'
 );
 
 insert into public.company_settings (id) values (1);
