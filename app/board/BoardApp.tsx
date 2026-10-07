@@ -2654,9 +2654,24 @@ export default function BoardApp({
       // Straight off `leads` rather than leads_feed — RLS already limits
       // this table to the owner, and these columns stay out of the view so
       // DJs and musicians never receive a client's phone number.
-      const { data: followupData } = await supabase
-        .from("leads")
-        .select("id, phone, followup_status, followup_requested_at, followup_sent_at, followup_message, followup_error");
+      const followupCols = "id, phone, followup_status, followup_requested_at, followup_sent_at, followup_message, followup_error";
+      const followupResult = await supabase.from("leads").select(followupCols);
+      const followupError = followupResult.error;
+      let followupData = followupResult.data;
+      if (followupError) {
+        // The followup_* columns ship with a migration that's run by hand,
+        // so the app can be live before they exist. Without this fallback
+        // the whole select 400s and every card claims there's no phone on
+        // file — which looks like missing data rather than a missing
+        // migration. Phone alone still works, so ask for just that.
+        const retry = await supabase.from("leads").select("id, phone");
+        followupData = retry.data as typeof followupData;
+        if (retry.error) {
+          console.error("followup columns unavailable:", followupError.message, retry.error.message);
+        } else {
+          console.warn("followup_* columns missing — run supabase_migration_manual.sql. Phone still shown.");
+        }
+      }
       setFollowups(Object.fromEntries((followupData ?? []).map((f) => [f.id, f as FollowupRow])));
       const { data: leadMusiciansData } = await supabase.from("lead_musicians").select("*");
       setLeadMusicians(leadMusiciansData ?? []);
