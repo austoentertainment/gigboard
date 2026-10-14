@@ -456,17 +456,56 @@ create trigger trg_log_musician_payment
   after update on public.lead_musicians
   for each row execute function public.log_musician_payment_change();
 
+-- Austin is the only Headliner, so a Headliner lead he passes on is
+-- demoted to Resident and released to the pool rather than handed to
+-- Headliner-qualified DJs (there aren't any). That release left no trace a
+-- DJ could see — the status never changes (still 'checking') and created_at
+-- is however old the original inquiry is, so the lead appeared at the
+-- bottom of their Activity feed dated weeks ago and already read. This is
+-- the timestamp that lets it surface as new.
+--
+-- A trigger rather than an insert in /api/notify/availability, so a manual
+-- tier edit in the lead editor registers the same way an owner's pass
+-- does. Guarded on status = 'checking' because retagging an already-booked
+-- lead isn't a release.
+create function public.log_lead_tier_release()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.dj_tier = 'Headliner'
+     and new.dj_tier is distinct from 'Headliner'
+     and new.status = 'checking' then
+    insert into public.events (lead_id, actor_user_id, event_type, detail)
+    values (new.id, auth.uid(), 'tier_release',
+            jsonb_build_object('from', old.dj_tier, 'to', new.dj_tier));
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_log_lead_tier_release
+  after update on public.leads
+  for each row execute function public.log_lead_tier_release();
+
 -- Lets a DJ or musician read the slice of the audit log that's about
 -- them, for the Activity tab — deliberately narrow: your own payments
--- only (never anyone else's payout), and the "booked" transition on
--- leads leads_feed already shows you. Every other event type stays
--- owner-only, so availability responses don't leak between DJs.
+-- only (never anyone else's payout), the "booked" transition on
+-- leads leads_feed already shows you, and the moment a Headliner lead was
+-- released into the pool. Every other event type stays owner-only, so
+-- availability responses don't leak between DJs.
 create policy "events_talent_select" on public.events
   for select using (
     (event_type = 'payment' and detail->>'payee_id' = auth.uid()::text)
     or (
       event_type = 'status_change'
       and detail->>'to' in ('meeting', 'booked')
+      and lead_id in (select id from public.leads_feed)
+    )
+    or (
+      event_type = 'tier_release'
       and lead_id in (select id from public.leads_feed)
     )
   );

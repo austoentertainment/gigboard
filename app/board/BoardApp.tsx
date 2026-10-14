@@ -302,6 +302,9 @@ function describeEvent(e: EventRow, actorLabel: string): string {
   if (e.event_type === "availability_retracted") {
     return `${actorLabel} retracted their "${String(detail.previous_response ?? "?")}" response`;
   }
+  if (e.event_type === "tier_release") {
+    return `Released to the ${String(detail.to ?? "?")} pool (was ${String(detail.from ?? "?")})`;
+  }
   return `${actorLabel}: ${e.event_type}`;
 }
 
@@ -3297,12 +3300,30 @@ export default function BoardApp({
     !!l.musician_meeting_date && daysUntil(l.musician_meeting_date) >= -ACTIVITY_RECENT_DAYS;
   const newest = (a: ActivityItem, b: ActivityItem) => (a.at < b.at ? 1 : -1);
 
+  // A Headliner lead Austin passes on is demoted to Resident and released
+  // to the pool (see /api/notify/availability). The lead itself can be
+  // weeks old by then, so dating that item by created_at buried it at the
+  // bottom of the feed, already marked read — the release is the moment it
+  // became news for this DJ, so that's the timestamp it gets. Still one
+  // item per lead, not a second one: it's the same "New lead" row, just
+  // dated when it actually reached them. Falls back to created_at for
+  // leads released longer ago than the events window.
+  // myEvents is newest-first, and a later Map entry wins, so reverse the
+  // slice to leave the most recent release per lead on top.
+  const releasedAt = new Map(
+    myEvents
+      .filter((e) => e.event_type === "tier_release" && e.lead_id)
+      .reverse()
+      .map((e) => [e.lead_id as string, e.created_at]),
+  );
+
   // New leads stay unwindowed — an unanswered date check is still waiting
   // on you however old it is, so it keeps its place in the feed by age
   // rather than dropping off after a week like the rest.
   const djActivityItems: ActivityItem[] = [
     ...needsMe.map((l) => ({
-      key: `new-${l.id}`, lead: l, at: l.created_at, note: "New lead", color: T.accent, tab: "checks",
+      key: `new-${l.id}`, lead: l, at: releasedAt.get(l.id) ?? l.created_at,
+      note: "New lead", color: T.accent, tab: "checks",
     })),
     ...eventItems(isMeetingEvent, () => "Meeting booked", T.violet, "pending", true),
     ...eventItems(isBookedEvent, () => "Booked", T.green, "upcoming", true),
