@@ -55,11 +55,13 @@ export async function POST(request: Request) {
   // ready.
   //
   // Musicians aren't gated by DJ tier anywhere today (they're matched to a
-  // lead by instrument, not tier), but they're qualified for every tier by
-  // default so nothing blocks them if a tier check ever does apply to them.
+  // lead by instrument, not tier), but they're qualified for every tier a
+  // non-owner can hold, so nothing blocks them if a tier check ever does
+  // apply to them. Headliner is excluded for the same reason it's excluded
+  // from Roster's own tier buttons — it's Austin's alone.
   const { error: profileError } = await admin.from("dj_profiles").update({
     notify_email: false,
-    ...(isMusician ? { instrument: instrument as Instrument, dj_tier_visibility: ["Headliner", "Resident", "Associate"] } : {}),
+    ...(isMusician ? { instrument: instrument as Instrument, dj_tier_visibility: ["Resident", "Associate"] } : {}),
   }).eq("user_id", data.user.id);
   if (profileError) {
     return NextResponse.json({ error: `Account created, but couldn't finish setting it up: ${profileError.message}` }, { status: 500 });

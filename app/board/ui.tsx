@@ -15,6 +15,12 @@ export const T = {
 };
 
 export const DJ_TIERS = ["Headliner", "Resident", "Associate"] as const;
+// Austin is the only Headliner. A lead can still come in tagged Headliner
+// — that's what gives him first refusal — but it converts to Resident the
+// moment he passes on it (see /api/notify/availability), so no DJ is ever
+// *qualified* for Headliner. Roster only offers the two tiers a DJ can
+// actually hold.
+export const DJ_QUAL_TIERS = ["Resident", "Associate"] as const;
 // "Any" is a lead-level dj_tier value, not a DJ qualification — it means
 // the fee's open (no rate to auto-suggest) and every DJ gets notified,
 // regardless of their own tier_visibility. Kept out of DJ_TIERS so it

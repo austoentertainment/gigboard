@@ -7,7 +7,7 @@ import type { Database, DjTier, ProdTier, TravelZone, Instrument, MusicianServic
 import { tierRate, travelRate, guessTravelZone } from "@/lib/rates";
 import { anyInstrumentMentioned, instrumentMentioned } from "@/lib/instruments";
 import {
-  T, DJ_TIERS, LEAD_STATUS, MUSICIAN_STAGE, fmtDate,
+  T, DJ_QUAL_TIERS, LEAD_STATUS, MUSICIAN_STAGE, fmtDate,
   Lamp, Tag, Btn, Field, Input, Select, TextArea, Empty, TierPicker, SectionLabel, Avatar,
   MUSICIAN_INSTRUMENTS, MUSICIAN_SERVICES, TIER_COLORS, INSTRUMENT_COLORS,
 } from "./ui";
@@ -1865,7 +1865,11 @@ function Roster({
       {roster.length === 0 && <Empty text="No DJs yet. Add your Residents and Associates with an email + password, then tell them what it is." />}
       {roster.map((dj) => {
         const profile = rosterProfiles.find((p) => p.user_id === dj.id);
-        const tiers = profile?.dj_tier_visibility ?? [];
+        // Headliner is Austin's alone, so it's dropped on the way in as
+        // well as on the way out (see setTiers) — otherwise a stale
+        // Headliner on an older profile row would survive every toggle,
+        // since there's no longer a button that can clear it.
+        const tiers = (profile?.dj_tier_visibility ?? []).filter((t) => t !== "Headliner");
         const notifyEnabled = profile?.notify_email ?? false;
         // assigned_dj_id alone isn't enough — a lead can be assigned during
         // the meeting stage (Pending) before it's actually marked booked,
@@ -1890,7 +1894,7 @@ function Roster({
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.dim }}>TIERS</span>
-              {DJ_TIERS.map((t) => {
+              {DJ_QUAL_TIERS.map((t) => {
                 const active = tiers.includes(t);
                 return (
                   <button
@@ -2827,7 +2831,10 @@ export default function BoardApp({
   }, [supabase]);
 
   const saveDjTiers = async (djId: string, tiers: DjTier[]) => {
-    const { error } = await supabase.from("dj_profiles").update({ dj_tier_visibility: tiers }).eq("user_id", djId);
+    const { error } = await supabase
+      .from("dj_profiles")
+      .update({ dj_tier_visibility: tiers.filter((t) => t !== "Headliner") })
+      .eq("user_id", djId);
     if (error) { ping(friendlyError(error)); return; }
     ping("Tiers updated");
     loadData();
@@ -2977,7 +2984,7 @@ export default function BoardApp({
     if (error) { ping(friendlyError(error)); return; }
     ping(
       isMyHeadlinerPass
-        ? "Passed — Headliner DJs can see this lead now"
+        ? "Passed — now a Resident lead, repriced and visible to your Residents"
         : role === "owner" && answer === "available"
         ? "Marked yourself available — moved to your ready-to-book list"
         : answer === "available" ? "Marked available — visible on the board now" : "Passed on this date"
